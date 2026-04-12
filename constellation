@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Canvas</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #222;
+  --border: rgba(255,255,255,0.1); --border-hover: rgba(255,255,255,0.2);
+  --text: #e8e8e8; --text-muted: #888;
+  --accent: #FF4D00; --accent-dim: rgba(255,77,0,0.15);
+  --canvas-bg: #141414; --handle: #FF4D00;
+  --mono: 'DM Mono', monospace; --sans: 'DM Sans', sans-serif;
+}
+body { font-family: var(--sans); background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── BOARD BAR ── */
+#board-bar {
+  display: flex; align-items: center; gap: 0;
+  background: #111; border-bottom: 1px solid var(--border);
+  padding: 0 12px; flex-shrink: 0; overflow-x: auto; min-height: 38px;
+}
+#board-bar::-webkit-scrollbar { height: 3px; }
+#board-bar::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+.board-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 14px; height: 38px; cursor: pointer;
+  font-size: 12px; color: var(--text-muted);
+  border-right: 1px solid var(--border);
+  white-space: nowrap; flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+  position: relative;
+}
+.board-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.board-tab.active { color: var(--text); background: var(--surface); }
+.board-tab.active::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+  height: 2px; background: var(--accent);
+}
+.board-tab-name { outline: none; background: transparent; border: none; color: inherit; font: inherit; cursor: pointer; max-width: 120px; }
+.board-tab-name:focus { color: var(--text); border-bottom: 1px solid var(--accent); cursor: text; }
+.board-tab .close-tab {
+  font-size: 14px; color: var(--text-muted); line-height: 1;
+  padding: 0 2px; border: none; background: transparent; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s, color 0.15s;
+}
+.board-tab:hover .close-tab, .board-tab.active .close-tab { opacity: 1; }
+.board-tab .close-tab:hover { color: #ff6060; }
+#add-board-btn {
+  padding: 0 12px; height: 38px; font-size: 18px; line-height: 1;
+  color: var(--text-muted); border: none; background: transparent;
+  cursor: pointer; flex-shrink: 0; transition: color 0.15s;
+}
+#add-board-btn:hover { color: var(--accent); }
+.board-actions {
+  margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; padding-left: 12px;
+}
+.board-actions button {
+  font-family: var(--sans); font-size: 11px; padding: 4px 10px;
+  border-radius: 5px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.board-actions button:hover { border-color: var(--border-hover); color: var(--text); background: rgba(255,255,255,0.05); }
+
+/* ── TOOLBAR ── */
+#toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+.tool-group { display: flex; align-items: center; gap: 6px; padding-right: 12px; border-right: 1px solid var(--border); margin-right: 6px; }
+.tool-group:last-child { border-right: none; margin-right: 0; padding-right: 0; }
+.app-title { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-right: 8px; }
+
+button { font-family: var(--sans); font-size: 12px; font-weight: 400; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s; white-space: nowrap; }
+button:hover { border-color: var(--border-hover); background: rgba(255,255,255,0.05); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+button.primary:hover { background: #e04400; border-color: #e04400; }
+button.secondary { border-color: rgba(255,255,255,0.22); }
+button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
+
+.toggle-btn { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 10px; }
+.toggle-btn .icon { width: 14px; height: 14px; border: 1.5px solid var(--text-muted); border-radius: 3px; display: flex; align-items: center; justify-content: center; transition: border-color 0.15s, background 0.15s; }
+.toggle-btn.active .icon { background: var(--accent); border-color: var(--accent); }
+.toggle-btn.active .icon::after { content: ''; display: block; width: 7px; height: 4px; border-left: 1.5px solid #fff; border-bottom: 1.5px solid #fff; transform: rotate(-45deg) translateY(-1px); }
+
+#count { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.color-picker-wrap { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.swatch-row { display: flex; gap: 4px; }
+.swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; transition: transform 0.1s, border-color 0.1s; }
+.swatch:hover { transform: scale(1.15); border-color: var(--border-hover); }
+.swatch.active { border-color: var(--accent); transform: scale(1.15); }
+.custom-color { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); padding: 0; cursor: pointer; overflow: hidden; }
+
+/* ── CANVAS ── */
+#canvas { flex: 1; position: relative; overflow: hidden; background: var(--canvas-bg); transition: background 0.3s; }
+.dot-grid { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px); background-size: 28px 28px; pointer-events: none; }
+#drop-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; pointer-events: none; transition: opacity 0.3s; }
+#drop-hint .hint-icon { width: 56px; height: 56px; border: 1.5px dashed rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+#drop-hint p { font-size: 13px; color: rgba(255,255,255,0.25); font-family: var(--mono); }
+#drop-hover-overlay { display: none; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 12px; background: var(--accent-dim); pointer-events: none; z-index: 1000; }
+#canvas.drag-over #drop-hover-overlay { display: block; }
+
+/* ── NODES ── */
+.canvas-node { position: absolute; user-select: none; cursor: grab; }
+.canvas-node:active { cursor: grabbing; }
+.resize-handle { position: absolute; width: 10px; height: 10px; background: var(--bg); border: 1.5px solid var(--handle); border-radius: 2px; z-index: 10; display: none; }
+.canvas-node.selected .resize-handle { display: block; }
+.resize-handle.tl { top: -5px; left: -5px; cursor: nwse-resize; }
+.resize-handle.tr { top: -5px; right: -5px; cursor: nesw-resize; }
+.resize-handle.bl { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.resize-handle.br { bottom: -5px; right: -5px; cursor: nwse-resize; }
+
+.action-bar { position: absolute; top: -36px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; white-space: nowrap; z-index: 20; }
+.canvas-node.selected .action-bar { display: flex; }
+.action-bar button { font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+.action-bar .sep { width: 1px; height: 14px; background: var(--border); margin: 0 2px; }
+.action-bar .size-readout { font-family: var(--mono); font-size: 10px; color: var(--text-muted); padding: 3px 6px; pointer-events: none; }
+
+.img-node .img-inner { width: 100%; height: 100%; position: relative; }
+.img-frame { width: 100%; height: 100%; overflow: hidden; border-radius: 6px; border: 1.5px solid transparent; transition: border-color 0.15s; }
+.img-node.selected .img-frame { border-color: var(--accent); }
+.img-frame img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.img-label { position: absolute; bottom: -26px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; transition: color 0.15s; display: none; }
+.img-node.selected .img-label { color: var(--text); }
+.labels-on .img-label { display: block; }
+
+.text-node { min-width: 100px; }
+.text-border { width: 100%; min-height: 40px; border: 1.5px solid transparent; border-radius: 6px; transition: border-color 0.15s; position: relative; }
+.text-node.selected .text-border { border-color: var(--accent); }
+.text-content { width: 100%; min-height: 36px; padding: 8px 10px; outline: none; font-family: var(--sans); font-size: 16px; font-weight: 400; color: #e8e8e8; line-height: 1.5; word-break: break-word; white-space: pre-wrap; cursor: text; background: transparent; border: none; display: block; box-sizing: border-box; }
+.text-content:empty::before { content: attr(data-placeholder); color: rgba(255,255,255,0.2); pointer-events: none; }
+.text-format-bar { position: absolute; top: -44px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 3px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; white-space: nowrap; z-index: 21; }
+.text-node.selected .text-format-bar { display: flex; }
+.text-format-bar button { font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+.text-format-bar .sep { width: 1px; height: 14px; background: var(--border); margin: 0 3px; }
+.text-format-bar select { font-family: var(--sans); font-size: 11px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; cursor: pointer; }
+.text-format-bar select option { background: #1a1a1a; }
+.fmt-btn { font-weight: 600; min-width: 26px; text-align: center; }
+.fmt-btn.active { background: rgba(255,77,0,0.2) !important; border-color: var(--accent) !important; color: var(--accent) !important; }
+
+/* ── MODAL ── */
+#modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+#modal-overlay.open { display: flex; }
+#modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; width: 340px; }
+#modal h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; }
+#modal input[type="text"] { width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--sans); font-size: 13px; outline: none; margin-bottom: 16px; }
+#modal input[type="text"]:focus { border-color: var(--accent); }
+#modal .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+#modal .modal-btns button { font-size: 12px; padding: 6px 16px; }
+
+#file-input { display: none; }
+#import-input { display: none; }
+</style>
+</head>
+<body>
+
+<!-- BOARD TABS -->
+<div id="board-bar">
+  <div id="tabs-container"></div>
+  <button id="add-board-btn" title="New board">+</button>
+  <div class="board-actions">
+    <button id="duplicate-board-btn">Duplicate</button>
+    <button id="export-board-btn">Export board</button>
+    <button id="import-board-btn">Import board</button>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <span class="app-title">canvas</span>
+  <div class="tool-group">
+    <button class="primary" id="upload-btn">+ Images</button>
+    <button class="secondary" id="text-btn">T+ Text</button>
+  </div>
+  <div class="tool-group">
+    <button class="toggle-btn" id="aspect-btn"><span class="icon"></span>Lock ratio</button>
+    <button class="toggle-btn" id="labels-btn"><span class="icon"></span>Labels</button>
+  </div>
+  <div class="tool-group color-picker-wrap">
+    <span>BG</span>
+    <div class="swatch-row" id="swatches">
+      <div class="swatch active" style="background:#141414" data-color="#141414"></div>
+      <div class="swatch" style="background:#1a1a2e" data-color="#1a1a2e"></div>
+      <div class="swatch" style="background:#0d1f0d" data-color="#0d1f0d"></div>
+      <div class="swatch" style="background:#f5f0e8" data-color="#f5f0e8"></div>
+      <div class="swatch" style="background:#ffffff" data-color="#ffffff"></div>
+      <div class="swatch" style="background:#1a0a00" data-color="#1a0a00"></div>
+    </div>
+    <input type="color" class="custom-color" id="custom-bg" value="#141414">
+  </div>
+  <div class="tool-group">
+    <button class="danger" id="clear-btn">Clear board</button>
+  </div>
+  <span id="count"></span>
+</div>
+
+<div id="canvas">
+  <div class="dot-grid"></div>
+  <div id="drop-hover-overlay"></div>
+  <div id="drop-hint">
+    <div class="hint-icon">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <circle cx="8.5" cy="10.5" r="1.5"/>
+        <path d="M3 16l5-5 4 4 3-3 6 5"/>
+      </svg>
+    </div>
+    <p>drop images · click + images or T+ text to begin</p>
+  </div>
+</div>
+
+<input type="file" id="file-input" multiple accept="image/*">
+<input type="file" id="import-input" accept=".json">
+
+<!-- RENAME MODAL -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h3 id="modal-title">Rename board</h3>
+    <input type="text" id="modal-input" placeholder="Board name">
+    <div class="modal-btns">
+      <button id="modal-cancel">Cancel</button>
+      <button class="primary" id="modal-confirm">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+// BOARD STATE
+// ════════════════════════════════════════════════
+const STORAGE_KEY = 'imagecanvas_boards_v1';
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+// boards = [{ id, name, bg, items: [...serialized] }]
+let boards = [];
+let activeBoardId = null;
+
+function defaultBoard(name = 'Board 1') {
+  return { id: uid(), name, bg: '#141414', items: [] };
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed) && parsed.length) { boards = parsed; return; } }
+  } catch(e) {}
+  boards = [defaultBoard('Board 1')];
+}
+
+function saveToStorage() {
+  // Capture current board state before saving
+  if (activeBoardId) captureBoard(activeBoardId);
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(boards)); } catch(e) { console.warn('Storage save failed (quota?)', e); }
+}
+
+// ════════════════════════════════════════════════
+// SERIALIZE / DESERIALIZE NODES
+// ════════════════════════════════════════════════
+function serializeNodes() {
+  return nodes.map(el => {
+    const base = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, z: parseInt(el.style.zIndex)||0 };
+    if (el.classList.contains('img-node')) {
+      return { ...base, type: 'image', src: el.querySelector('img').src, label: el.querySelector('.img-label').textContent, flipped: el.querySelector('.img-frame').style.transform === 'scaleX(-1)' };
+    }
+    if (el.classList.contains('text-node')) {
+      const c = el.querySelector('.text-content');
+      const tb = el.querySelector('.text-border');
+      return { ...base, type: 'text', html: c.innerHTML,
+        fontSize: c.style.fontSize || '16px', fontFamily: c.style.fontFamily || '',
+        fontWeight: c.style.fontWeight || '400', fontStyle: c.style.fontStyle || 'normal',
+        color: c.style.color || '#e8e8e8', bgColor: tb.style.background || 'transparent' };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+function captureBoard(boardId) {
+  const b = boards.find(b => b.id === boardId);
+  if (!b) return;
+  b.items = serializeNodes();
+  b.bg = canvas.style.background || '#141414';
+}
+
+function restoreBoard(b) {
+  // clear canvas
+  nodes.forEach(n => { try { canvas.removeChild(n); } catch(e){} });
+  nodes = []; selected = null;
+
+  // bg
+  const bg = b.bg || '#141414';
+  canvas.style.background = bg;
+  customBg.value = /^#[0-9a-f]{6}$/i.test(bg) ? bg : '#141414';
+  updateDotGrid(bg);
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === bg));
+
+  // items sorted by z
+  const items = [...(b.items || [])].sort((a,b) => a.z - b.z);
+  items.forEach(item => {
+    if (item.type === 'image') restoreImageNode(item);
+    else if (item.type === 'text') restoreTextNode(item);
+  });
+  updateCount();
+}
+
+// ════════════════════════════════════════════════
+// TABS UI
+// ════════════════════════════════════════════════
+function renderTabs() {
+  const container = document.getElementById('tabs-container');
+  container.innerHTML = '';
+  boards.forEach(b => {
+    const tab = document.createElement('div');
+    tab.className = 'board-tab' + (b.id === activeBoardId ? ' active' : '');
+    tab.dataset.id = b.id;
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'board-tab-name';
+    nameEl.textContent = b.name;
+    nameEl.title = 'Double-click to rename';
+    nameEl.addEventListener('dblclick', e => { e.stopPropagation(); openRenameModal(b.id); });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'close-tab';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Delete board';
+    closeBtn.addEventListener('click', e => { e.stopPropagation(); deleteBoard(b.id); });
+
+    tab.appendChild(nameEl);
+    tab.appendChild(closeBtn);
+    tab.addEventListener('click', () => switchBoard(b.id));
+    container.appendChild(tab);
+  });
+}
+
+function switchBoard(id) {
+  if (id === activeBoardId) return;
+  captureBoard(activeBoardId);
+  activeBoardId = id;
+  const b = boards.find(b => b.id === id);
+  restoreBoard(b);
+  renderTabs();
+  saveToStorage();
+}
+
+function addBoard() {
+  captureBoard(activeBoardId);
+  const b = defaultBoard(`Board ${boards.length + 1}`);
+  boards.push(b);
+  activeBoardId = b.id;
+  restoreBoard(b);
+  renderTabs();
+  saveToStorage();
+}
+
+function deleteBoard(id) {
+  if (boards.length === 1) { alert("You need at least one board."); return; }
+  if (!confirm(`Delete "${boards.find(b=>b.id===id)?.name}"? This cannot be undone.`)) return;
+  const idx = boards.findIndex(b => b.id === id);
+  boards.splice(idx, 1);
+  if (activeBoardId === id) {
+    activeBoardId = boards[Math.max(0, idx - 1)].id;
+    restoreBoard(boards.find(b => b.id === activeBoardId));
+  }
+  renderTabs();
+  saveToStorage();
+}
+
+function duplicateBoard() {
+  captureBoard(activeBoardId);
+  const src = boards.find(b => b.id === activeBoardId);
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = uid();
+  copy.name = src.name + ' copy';
+  const idx = boards.findIndex(b => b.id === activeBoardId);
+  boards.splice(idx + 1, 0, copy);
+  activeBoardId = copy.id;
+  restoreBoard(copy);
+  renderTabs();
+  saveToStorage();
+}
+
+// ════════════════════════════════════════════════
+// RENAME MODAL
+// ════════════════════════════════════════════════
+let modalCallback = null;
+function openRenameModal(boardId) {
+  const b = boards.find(b => b.id === boardId);
+  document.getElementById('modal-title').textContent = 'Rename board';
+  const inp = document.getElementById('modal-input');
+  inp.value = b.name;
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  modalCallback = (val) => {
+    if (val.trim()) { b.name = val.trim(); renderTabs(); saveToStorage(); }
+  };
+}
+document.getElementById('modal-cancel').addEventListener('click', () => { document.getElementById('modal-overlay').classList.remove('open'); });
+document.getElementById('modal-confirm').addEventListener('click', () => {
+  const val = document.getElementById('modal-input').value;
+  if (modalCallback) modalCallback(val);
+  document.getElementById('modal-overlay').classList.remove('open');
+});
+document.getElementById('modal-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('modal-confirm').click();
+  if (e.key === 'Escape') document.getElementById('modal-cancel').click();
+});
+document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === document.getElementById('modal-overlay')) document.getElementById('modal-cancel').click(); });
+
+// ════════════════════════════════════════════════
+// EXPORT / IMPORT
+// ════════════════════════════════════════════════
+document.getElementById('export-board-btn').addEventListener('click', () => {
+  captureBoard(activeBoardId);
+  const b = boards.find(b => b.id === activeBoardId);
+  const json = JSON.stringify(b, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (b.name || 'board').replace(/\s+/g, '-') + '.json';
+  a.click(); URL.revokeObjectURL(url);
+});
+
+document.getElementById('import-board-btn').addEventListener('click', () => document.getElementById('import-input').click());
+document.getElementById('import-input').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const b = JSON.parse(ev.target.result);
+      if (!b.items || !b.name) { alert('Invalid board file.'); return; }
+      b.id = uid(); b.name = b.name + ' (imported)';
+      captureBoard(activeBoardId);
+      boards.push(b);
+      activeBoardId = b.id;
+      restoreBoard(b);
+      renderTabs(); saveToStorage();
+    } catch(err) { alert('Could not parse board file.'); }
+  };
+  reader.readAsText(f);
+  e.target.value = '';
+});
+
+document.getElementById('add-board-btn').addEventListener('click', addBoard);
+document.getElementById('duplicate-board-btn').addEventListener('click', duplicateBoard);
+
+// ════════════════════════════════════════════════
+// CANVAS ENGINE (same as before, unchanged)
+// ════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const fileInput = document.getElementById('file-input');
+const uploadBtn = document.getElementById('upload-btn');
+const textBtn = document.getElementById('text-btn');
+const clearBtn = document.getElementById('clear-btn');
+const dropHint = document.getElementById('drop-hint');
+const countEl = document.getElementById('count');
+const aspectBtn = document.getElementById('aspect-btn');
+const labelsBtn = document.getElementById('labels-btn');
+const customBg = document.getElementById('custom-bg');
+
+let nodes = [], selected = null, drag = null, resize = null;
+let lockAspect = false, showLabels = true;
+
+aspectBtn.addEventListener('click', () => { lockAspect = !lockAspect; aspectBtn.classList.toggle('active', lockAspect); });
+labelsBtn.classList.add('active'); canvas.classList.add('labels-on');
+labelsBtn.addEventListener('click', () => {
+  showLabels = !showLabels;
+  labelsBtn.classList.toggle('active', showLabels);
+  canvas.classList.toggle('labels-on', showLabels);
+});
+
+document.getElementById('swatches').addEventListener('click', e => {
+  const sw = e.target.closest('.swatch'); if (!sw) return;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  sw.classList.add('active'); canvas.style.background = sw.dataset.color;
+  customBg.value = sw.dataset.color; updateDotGrid(sw.dataset.color);
+  if (activeBoardId) { boards.find(b=>b.id===activeBoardId).bg = sw.dataset.color; saveToStorage(); }
+});
+customBg.addEventListener('input', () => {
+  canvas.style.background = customBg.value;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  updateDotGrid(customBg.value);
+  if (activeBoardId) { boards.find(b=>b.id===activeBoardId).bg = customBg.value; saveToStorage(); }
+});
+
+function updateDotGrid(hex) {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  const light=(r*299+g*587+b*114)/1000>128;
+  canvas.querySelector('.dot-grid').style.backgroundImage = light
+    ? 'radial-gradient(circle,rgba(0,0,0,0.12) 1px,transparent 1px)'
+    : 'radial-gradient(circle,rgba(255,255,255,0.1) 1px,transparent 1px)';
+}
+
+function updateCount() {
+  const imgs = nodes.filter(n=>n.classList.contains('img-node')).length;
+  const txts = nodes.filter(n=>n.classList.contains('text-node')).length;
+  const parts = [];
+  if (imgs) parts.push(`${imgs} image${imgs>1?'s':''}`);
+  if (txts) parts.push(`${txts} text${txts>1?' boxes':' box'}`);
+  countEl.textContent = parts.join(' · ');
+  dropHint.style.opacity = nodes.length===0 ? '1' : '0';
+}
+
+function selectNode(el) {
+  if (selected && selected !== el) selected.classList.remove('selected');
+  selected = el; el.classList.add('selected'); el.style.zIndex = Date.now();
+}
+canvas.addEventListener('mousedown', e => {
+  if (!e.target.closest('.canvas-node')) { if (selected) { selected.classList.remove('selected'); selected = null; } }
+});
+
+function attachDragResize(el, isText) {
+  ['tl','tr','bl','br'].forEach(cls => {
+    el.querySelector('.resize-handle.'+cls).addEventListener('mousedown', e => {
+      e.stopPropagation(); e.preventDefault(); selectNode(el);
+      const sr = el.querySelector('.size-readout');
+      resize = { el, cls, startX:e.clientX, startY:e.clientY, startW:el.offsetWidth, startH:el.offsetHeight, startL:el.offsetLeft, startT:el.offsetTop, ar:el._ar||null, sizeReadout:sr, isText };
+    });
+  });
+  el.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('resize-handle')) return;
+    if (e.target.closest('.action-bar,.text-format-bar')) return;
+    if (e.target.classList.contains('text-content') || e.target.closest('.text-content')) return;
+    e.preventDefault(); selectNode(el);
+    const r = canvas.getBoundingClientRect();
+    drag = { el, offX: e.clientX-el.offsetLeft-r.left, offY: e.clientY-el.offsetTop-r.top };
+  });
+}
+
+window.addEventListener('mousemove', e => {
+  if (drag) {
+    const r=canvas.getBoundingClientRect();
+    drag.el.style.left = Math.max(0,Math.min(e.clientX-r.left-drag.offX, r.width-drag.el.offsetWidth))+'px';
+    drag.el.style.top  = Math.max(0,Math.min(e.clientY-r.top-drag.offY,  r.height-drag.el.offsetHeight))+'px';
+  }
+  if (resize) {
+    const {el,cls,startX,startY,startW,startH,startL,startT,ar,sizeReadout,isText}=resize;
+    const dx=e.clientX-startX, dy=e.clientY-startY, minW=80, minH=isText?36:60;
+    let w=startW,h=startH,l=startL,t=startT;
+    const useAr=lockAspect&&ar&&!isText;
+    if      (cls==='br'){w=Math.max(minW,startW+dx);h=useAr?w*ar:Math.max(minH,startH+dy);}
+    else if (cls==='bl'){w=Math.max(minW,startW-dx);h=useAr?w*ar:Math.max(minH,startH+dy);l=startL+(startW-w);}
+    else if (cls==='tr'){w=Math.max(minW,startW+dx);h=useAr?w*ar:Math.max(minH,startH-dy);t=startT+(startH-h);}
+    else if (cls==='tl'){w=Math.max(minW,startW-dx);h=useAr?w*ar:Math.max(minH,startH-dy);l=startL+(startW-w);t=startT+(startH-h);}
+    el.style.width=w+'px'; el.style.left=l+'px'; el.style.top=t+'px';
+    if(!isText) el.style.height=h+'px';
+    if(sizeReadout) sizeReadout.textContent=`${Math.round(w)} × ${Math.round(el.offsetHeight)}`;
+  }
+});
+window.addEventListener('mouseup', () => {
+  drag=null; resize=null;
+  // autosave on interaction end
+  if (activeBoardId) { captureBoard(activeBoardId); saveToStorage(); }
+});
+
+window.addEventListener('keydown', e => {
+  if ((e.key==='Delete'||e.key==='Backspace') && selected) {
+    const a=document.activeElement;
+    if (a&&(a.isContentEditable||a.tagName==='INPUT'||a.tagName==='SELECT')) return;
+    canvas.removeChild(selected); nodes=nodes.filter(n=>n!==selected); selected=null; updateCount();
+    if (activeBoardId) { captureBoard(activeBoardId); saveToStorage(); }
+  }
+});
+
+// ── IMAGE NODE ────────────────────────────
+function makeImageNode(src, filename, opts={}) {
+  const W=opts.w||240, H=opts.h||180, margin=50;
+  const x = opts.x !== undefined ? opts.x : margin+Math.random()*Math.max(0,canvas.clientWidth-W-margin*2);
+  const y = opts.y !== undefined ? opts.y : margin+Math.random()*Math.max(0,canvas.clientHeight-H-margin*2);
+  const el = document.createElement('div');
+  el.className='canvas-node img-node';
+  el.style.cssText=`left:${x}px;top:${y}px;width:${W}px;height:${H}px;`;
+  el._ar=H/W;
+  const label=opts.label!==undefined?opts.label:(filename?filename.replace(/\.[^.]+$/,''):'image');
+  el.innerHTML=`
+    <div class="action-bar">
+      <span class="size-readout">${Math.round(W)} × ${Math.round(H)}</span>
+      <div class="sep"></div><button class="flip-btn">flip</button>
+      <div class="sep"></div><button class="del-btn">remove</button>
+    </div>
+    <div class="img-inner">
+      <div class="img-frame"><img src="${src}" draggable="false"></div>
+      <div class="resize-handle tl"></div><div class="resize-handle tr"></div>
+      <div class="resize-handle bl"></div><div class="resize-handle br"></div>
+    </div>
+    <div class="img-label" contenteditable="false" spellcheck="false">${label}</div>`;
+  const img=el.querySelector('img');
+  img.addEventListener('load',()=>{el._ar=img.naturalHeight/img.naturalWidth;});
+  if(opts.flipped) el.querySelector('.img-frame').style.transform='scaleX(-1)';
+  const labelEl=el.querySelector('.img-label');
+  labelEl.addEventListener('dblclick',e=>{e.stopPropagation();labelEl.contentEditable='true';labelEl.focus();const r=document.createRange();r.selectNodeContents(labelEl);window.getSelection().removeAllRanges();window.getSelection().addRange(r);});
+  labelEl.addEventListener('blur',()=>{labelEl.contentEditable='false';});
+  labelEl.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();labelEl.blur();}});
+  labelEl.addEventListener('mousedown',e=>{if(labelEl.contentEditable==='true')e.stopPropagation();});
+  el.querySelector('.del-btn').addEventListener('mousedown',e=>{e.stopPropagation();canvas.removeChild(el);nodes=nodes.filter(n=>n!==el);if(selected===el)selected=null;updateCount();captureBoard(activeBoardId);saveToStorage();});
+  let flipped=opts.flipped||false;
+  el.querySelector('.flip-btn').addEventListener('mousedown',e=>{e.stopPropagation();flipped=!flipped;el.querySelector('.img-frame').style.transform=flipped?'scaleX(-1)':'';});
+  attachDragResize(el,false);
+  canvas.appendChild(el);nodes.push(el);
+  if(!opts.silent) selectNode(el);
+  updateCount();
+  return el;
+}
+
+function restoreImageNode(item) {
+  makeImageNode(item.src, null, { x:item.x, y:item.y, w:item.w, h:item.h, label:item.label, flipped:item.flipped, silent:true });
+  if (item.z) nodes[nodes.length-1].style.zIndex = item.z;
+}
+
+// ── TEXT NODE ─────────────────────────────
+function makeTextNode(opts={}) {
+  const W=opts.w||220, margin=60;
+  const x=opts.x!==undefined?opts.x:margin+Math.random()*Math.max(0,canvas.clientWidth-W-margin*2);
+  const y=opts.y!==undefined?opts.y:margin+Math.random()*Math.max(0,canvas.clientHeight-120-margin*2);
+  const el=document.createElement('div');
+  el.className='canvas-node text-node';
+  el.style.cssText=`left:${x}px;top:${y}px;width:${W}px;`;
+  el.innerHTML=`
+    <div class="text-format-bar">
+      <select class="font-family-sel">
+        <option value="'DM Sans',sans-serif">Sans</option>
+        <option value="'DM Mono',monospace">Mono</option>
+        <option value="Georgia,serif">Serif</option>
+      </select>
+      <select class="font-size-sel">
+        <option value="12">12</option><option value="14">14</option>
+        <option value="16" selected>16</option><option value="20">20</option>
+        <option value="24">24</option><option value="32">32</option>
+        <option value="48">48</option><option value="64">64</option>
+      </select>
+      <div class="sep"></div>
+      <button class="fmt-btn bold-btn"><b>B</b></button>
+      <button class="fmt-btn italic-btn"><i>I</i></button>
+      <div class="sep"></div>
+      <input type="color" class="custom-color text-color-inp" value="#e8e8e8">
+      <input type="color" class="custom-color bg-color-inp" value="#222222">
+      <button class="fmt-btn bg-toggle-btn">bg</button>
+      <div class="sep"></div>
+      <button class="del-btn">remove</button>
+    </div>
+    <div class="text-border">
+      <div class="text-content" contenteditable="true" spellcheck="true" data-placeholder="Type here…"></div>
+      <div class="resize-handle tl"></div><div class="resize-handle tr"></div>
+      <div class="resize-handle bl"></div><div class="resize-handle br"></div>
+    </div>`;
+  const content=el.querySelector('.text-content');
+  const textBorder=el.querySelector('.text-border');
+  const fontFamilySel=el.querySelector('.font-family-sel');
+  const fontSizeSel=el.querySelector('.font-size-sel');
+  const boldBtn=el.querySelector('.bold-btn');
+  const italicBtn=el.querySelector('.italic-btn');
+  const textColorInp=el.querySelector('.text-color-inp');
+  const bgColorInp=el.querySelector('.bg-color-inp');
+  const bgToggleBtn=el.querySelector('.bg-toggle-btn');
+
+  if(opts.html) content.innerHTML=opts.html;
+  if(opts.fontSize){content.style.fontSize=opts.fontSize;const o=opts.fontSize.replace('px','');const opt=[...fontSizeSel.options].find(o2=>o2.value===o);if(opt)opt.selected=true;}
+  if(opts.fontFamily){content.style.fontFamily=opts.fontFamily;const opt=[...fontFamilySel.options].find(o=>o.value===opts.fontFamily);if(opt)opt.selected=true;}
+  if(opts.fontWeight){content.style.fontWeight=opts.fontWeight;}
+  if(opts.fontStyle){content.style.fontStyle=opts.fontStyle;}
+  if(opts.color){content.style.color=opts.color;textColorInp.value=opts.color;}
+  if(opts.bgColor&&opts.bgColor!=='transparent'){textBorder.style.background=opts.bgColor;bgColorInp.value=opts.bgColor;bgToggleBtn.classList.add('active');}
+
+  let isBold=opts.fontWeight==='700', isItalic=opts.fontStyle==='italic', bgOn=opts.bgColor&&opts.bgColor!=='transparent';
+  if(isBold) boldBtn.classList.add('active');
+  if(isItalic) italicBtn.classList.add('active');
+
+  fontFamilySel.addEventListener('change',()=>{content.style.fontFamily=fontFamilySel.value;});
+  fontFamilySel.addEventListener('mousedown',e=>e.stopPropagation());
+  fontSizeSel.addEventListener('change',()=>{content.style.fontSize=fontSizeSel.value+'px';});
+  fontSizeSel.addEventListener('mousedown',e=>e.stopPropagation());
+  boldBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();isBold=!isBold;content.style.fontWeight=isBold?'700':'400';boldBtn.classList.toggle('active',isBold);});
+  italicBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();isItalic=!isItalic;content.style.fontStyle=isItalic?'italic':'normal';italicBtn.classList.toggle('active',isItalic);});
+  textColorInp.addEventListener('input',()=>{content.style.color=textColorInp.value;});
+  textColorInp.addEventListener('mousedown',e=>e.stopPropagation());
+  bgColorInp.addEventListener('input',()=>{if(bgOn)textBorder.style.background=bgColorInp.value;});
+  bgColorInp.addEventListener('mousedown',e=>e.stopPropagation());
+  bgToggleBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();bgOn=!bgOn;textBorder.style.background=bgOn?bgColorInp.value:'transparent';bgToggleBtn.classList.toggle('active',bgOn);});
+  content.addEventListener('mousedown',e=>{e.stopPropagation();selectNode(el);});
+  content.addEventListener('focus',()=>selectNode(el));
+  el.querySelector('.del-btn').addEventListener('mousedown',e=>{e.stopPropagation();canvas.removeChild(el);nodes=nodes.filter(n=>n!==el);if(selected===el)selected=null;updateCount();captureBoard(activeBoardId);saveToStorage();});
+  attachDragResize(el,true);
+  canvas.appendChild(el);nodes.push(el);
+  if(!opts.silent){selectNode(el);setTimeout(()=>content.focus(),50);}
+  updateCount();
+}
+
+function restoreTextNode(item) {
+  makeTextNode({ x:item.x, y:item.y, w:item.w, html:item.html,
+    fontSize:item.fontSize, fontFamily:item.fontFamily, fontWeight:item.fontWeight,
+    fontStyle:item.fontStyle, color:item.color, bgColor:item.bgColor, silent:true });
+  if (item.z) nodes[nodes.length-1].style.zIndex = item.z;
+}
+
+// ── FILE LOADING ──────────────────────────
+function loadFiles(files) {
+  [...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
+    const reader=new FileReader();
+    reader.onload=e=>{makeImageNode(e.target.result,f.name);captureBoard(activeBoardId);saveToStorage();};
+    reader.readAsDataURL(f);
+  });
+}
+
+uploadBtn.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',()=>{loadFiles(fileInput.files);fileInput.value='';});
+textBtn.addEventListener('click',()=>{makeTextNode();captureBoard(activeBoardId);saveToStorage();});
+
+clearBtn.addEventListener('click',()=>{
+  if(!nodes.length) return;
+  if(confirm(`Clear all items on "${boards.find(b=>b.id===activeBoardId)?.name}"?`)){
+    nodes.forEach(n=>canvas.removeChild(n));nodes=[];selected=null;updateCount();
+    captureBoard(activeBoardId);saveToStorage();
+  }
+});
+
+canvas.addEventListener('dragenter',e=>{e.preventDefault();canvas.classList.add('drag-over');});
+canvas.addEventListener('dragover',e=>e.preventDefault());
+canvas.addEventListener('dragleave',e=>{if(!canvas.contains(e.relatedTarget))canvas.classList.remove('drag-over');});
+canvas.addEventListener('drop',e=>{e.preventDefault();canvas.classList.remove('drag-over');loadFiles(e.dataTransfer.files);});
+
+// ════════════════════════════════════════════════
+// BOOT
+// ════════════════════════════════════════════════
+loadFromStorage();
+activeBoardId = boards[0].id;
+restoreBoard(boards[0]);
+renderTabs();
+</script>
+</body>
+</html>
