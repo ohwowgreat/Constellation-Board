@@ -94,39 +94,39 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 .swatch.active { border-color: var(--accent); transform: scale(1.15); }
 .custom-color { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); padding: 0; cursor: pointer; overflow: hidden; }
 
-/* ── CANVAS & WORLD ── */
+/* ── CANVAS ── */
 #canvas {
-  flex: 1; position: relative; overflow: auto;
+  flex: 1; position: relative; overflow: hidden;
   background: var(--canvas-bg); transition: background 0.3s;
+  touch-action: none;
 }
-#canvas::-webkit-scrollbar { width: 8px; height: 8px; }
-#canvas::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-#canvas::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-#canvas::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
-#canvas::-webkit-scrollbar-corner { background: rgba(0,0,0,0.2); }
-#canvas.pan-ready { cursor: grab; }
-#canvas.panning { cursor: grabbing; }
+#canvas.pan-ready { cursor: grab !important; }
+#canvas.panning { cursor: grabbing !important; }
 
+/* Infinite dot grid — fixed to viewport, offset via background-position */
+#dot-grid {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* World: zero-size anchor, translated to pan position */
 #world {
-  position: relative;
-  width: 4000px;
-  height: 3000px;
-  flex-shrink: 0;
+  position: absolute;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  transform-origin: 0 0;
 }
 
-.dot-grid { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px); background-size: 28px 28px; pointer-events: none; }
-#drop-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; pointer-events: none; transition: opacity 0.3s; z-index: 5; }
+#drop-hint {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  pointer-events: none; transition: opacity 0.3s; z-index: 5;
+}
 #drop-hint .hint-icon { width: 56px; height: 56px; border: 1.5px dashed rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; }
 #drop-hint p { font-size: 13px; color: rgba(255,255,255,0.25); font-family: var(--mono); }
 #drop-hover-overlay { display: none; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 12px; background: var(--accent-dim); pointer-events: none; z-index: 1000; }
 #canvas.drag-over #drop-hover-overlay { display: block; }
-
-/* pan hint */
-#pan-hint {
-  position: absolute; bottom: 12px; right: 16px;
-  font-family: var(--mono); font-size: 10px; color: rgba(255,255,255,0.2);
-  pointer-events: none; z-index: 5; user-select: none;
-}
 
 /* ── NODES ── */
 .canvas-node { position: absolute; user-select: none; cursor: grab; }
@@ -225,9 +225,8 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 </div>
 
 <div id="canvas">
-  <div id="world">
-    <div class="dot-grid"></div>
-  </div>
+  <div id="dot-grid"></div>
+  <div id="world"></div>
   <div id="drop-hover-overlay"></div>
   <div id="drop-hint">
     <div class="hint-icon">
@@ -239,7 +238,6 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
     </div>
     <p>drop images · click + images or T+ text to begin</p>
   </div>
-  <div id="pan-hint">middle-click or space+drag to pan</div>
 </div>
 
 <input type="file" id="file-input" multiple accept="image/*">
@@ -265,12 +263,12 @@ const STORAGE_KEY = 'imagecanvas_boards_v1';
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
-// boards = [{ id, name, bg, scrollX, scrollY, items: [...serialized] }]
+// boards = [{ id, name, bg, panX, panY, items: [...serialized] }]
 let boards = [];
 let activeBoardId = null;
 
 function defaultBoard(name = 'Board 1') {
-  return { id: uid(), name, bg: '#141414', scrollX: 0, scrollY: 0, items: [] };
+  return { id: uid(), name, bg: '#141414', panX: null, panY: null, items: [] };
 }
 
 function loadFromStorage() {
@@ -281,9 +279,14 @@ function loadFromStorage() {
   boards = [defaultBoard('Board 1')];
 }
 
+let saveTimer = null;
 function saveToStorage() {
   if (activeBoardId) captureBoard(activeBoardId);
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(boards)); } catch(e) { console.warn('Storage save failed (quota?)', e); }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(boards)); } catch(e) { console.warn('Storage save failed', e); }
+}
+function saveToStorageDebounced() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveToStorage, 400);
 }
 
 // ════════════════════════════════════════════════
@@ -291,6 +294,7 @@ function saveToStorage() {
 // ════════════════════════════════════════════════
 function serializeNodes() {
   return nodes.map(el => {
+    // offsetLeft/offsetTop are relative to #world (its offsetParent), equal to CSS left/top
     const base = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, z: parseInt(el.style.zIndex)||0 };
     if (el.classList.contains('img-node')) {
       return { ...base, type: 'image', src: el.querySelector('img').src, label: el.querySelector('.img-label').textContent, flipped: el.querySelector('.img-frame').style.transform === 'scaleX(-1)' };
@@ -312,8 +316,8 @@ function captureBoard(boardId) {
   if (!b) return;
   b.items = serializeNodes();
   b.bg = canvas.style.background || '#141414';
-  b.scrollX = canvas.scrollLeft;
-  b.scrollY = canvas.scrollTop;
+  b.panX = panX;
+  b.panY = panY;
 }
 
 function restoreBoard(b) {
@@ -326,17 +330,16 @@ function restoreBoard(b) {
   updateDotGrid(bg);
   document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === bg));
 
+  // Restore pan — default to center of viewport on first visit
+  const cx = canvas.clientWidth / 2;
+  const cy = canvas.clientHeight / 2;
+  setPan(b.panX ?? cx, b.panY ?? cy);
+
   const items = [...(b.items || [])].sort((a,b) => a.z - b.z);
   items.forEach(item => {
     if (item.type === 'image') restoreImageNode(item);
     else if (item.type === 'text') restoreTextNode(item);
   });
-
-  requestAnimationFrame(() => {
-    canvas.scrollLeft = b.scrollX || 0;
-    canvas.scrollTop = b.scrollY || 0;
-  });
-
   updateCount();
 }
 
@@ -374,8 +377,7 @@ function switchBoard(id) {
   if (id === activeBoardId) return;
   captureBoard(activeBoardId);
   activeBoardId = id;
-  const b = boards.find(b => b.id === id);
-  restoreBoard(b);
+  restoreBoard(boards.find(b => b.id === id));
   renderTabs();
   saveToStorage();
 }
@@ -407,8 +409,7 @@ function duplicateBoard() {
   captureBoard(activeBoardId);
   const src = boards.find(b => b.id === activeBoardId);
   const copy = JSON.parse(JSON.stringify(src));
-  copy.id = uid();
-  copy.name = src.name + ' copy';
+  copy.id = uid(); copy.name = src.name + ' copy';
   const idx = boards.findIndex(b => b.id === activeBoardId);
   boards.splice(idx + 1, 0, copy);
   activeBoardId = copy.id;
@@ -447,82 +448,74 @@ document.getElementById('modal-overlay').addEventListener('click', e => { if (e.
 // ════════════════════════════════════════════════
 // EXPORT / IMPORT
 // ════════════════════════════════════════════════
-
-// Export current board as JSON
 document.getElementById('export-board-btn').addEventListener('click', () => {
   captureBoard(activeBoardId);
   const b = boards.find(b => b.id === activeBoardId);
-  const json = JSON.stringify(b, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(b, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = (b.name || 'board').replace(/\s+/g, '-') + '.json';
   a.click(); URL.revokeObjectURL(url);
 });
 
-// Export all boards as workspace JSON
 document.getElementById('export-workspace-btn').addEventListener('click', () => {
   captureBoard(activeBoardId);
-  const data = { version: 1, boards };
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ version: 1, boards }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'constellation-workspace.json';
   a.click(); URL.revokeObjectURL(url);
 });
 
-// Export current board as PDF
 document.getElementById('export-pdf-btn').addEventListener('click', async () => {
   if (!nodes.length) { alert('No items on this board to export.'); return; }
-  if (!window.html2canvas || !window.jspdf) { alert('PDF libraries not loaded yet. Please try again in a moment.'); return; }
+  if (!window.html2canvas || !window.jspdf) { alert('PDF libraries not loaded yet. Please try again.'); return; }
 
   captureBoard(activeBoardId);
   const b = boards.find(b => b.id === activeBoardId);
   const btn = document.getElementById('export-pdf-btn');
-  btn.textContent = 'Generating…';
-  btn.disabled = true;
+  btn.textContent = 'Generating…'; btn.disabled = true;
 
   const padding = 60;
-  let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   nodes.forEach(n => {
     const x = n.offsetLeft, y = n.offsetTop, w = n.offsetWidth, h = n.offsetHeight;
     minX = Math.min(minX, x); minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
   });
 
-  const cropX = Math.max(0, minX - padding);
-  const cropY = Math.max(0, minY - padding);
-  const cropW = maxX - minX + padding * 2;
-  const cropH = maxY - minY + padding * 2;
+  const cropX = minX - padding, cropY = minY - padding;
+  const cropW = maxX - minX + padding * 2, cropH = maxY - minY + padding * 2;
 
   try {
+    // Temporarily reveal content outside viewport for capture
+    const prevTransform = world.style.transform;
+    world.style.transform = `translate(${-cropX}px, ${-cropY}px)`;
+    canvas.style.overflow = 'visible';
+
     const cvs = await html2canvas(world, {
-      useCORS: true,
-      scale: 2,
+      useCORS: true, scale: 2, logging: false,
       backgroundColor: canvas.style.background || '#141414',
-      x: cropX,
-      y: cropY,
-      width: cropW,
-      height: cropH,
-      logging: false
+      width: cropW, height: cropH, x: 0, y: 0,
+      windowWidth: cropW, windowHeight: cropH
     });
 
+    world.style.transform = prevTransform;
+    canvas.style.overflow = 'hidden';
+
     const { jsPDF } = window.jspdf;
-    const orientation = cropW >= cropH ? 'landscape' : 'portrait';
-    const pdf = new jsPDF({ orientation, unit: 'pt', format: [cropW, cropH] });
+    const pdf = new jsPDF({ orientation: cropW >= cropH ? 'landscape' : 'portrait', unit: 'pt', format: [cropW, cropH] });
     pdf.addImage(cvs.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, cropW, cropH);
     pdf.save((b?.name || 'board').replace(/\s+/g, '-') + '.pdf');
   } catch(err) {
     console.error('PDF export failed:', err);
+    canvas.style.overflow = 'hidden';
     alert('PDF export failed. Please try again.');
   } finally {
-    btn.textContent = 'Export PDF';
-    btn.disabled = false;
+    btn.textContent = 'Export PDF'; btn.disabled = false;
   }
 });
 
-// Import — handles single board JSON or workspace JSON
 document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-input').click());
 document.getElementById('import-input').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
@@ -530,27 +523,20 @@ document.getElementById('import-input').addEventListener('change', e => {
   reader.onload = ev => {
     try {
       const data = JSON.parse(ev.target.result);
-      // Workspace file: { version, boards: [...] }
       if (data.version && Array.isArray(data.boards) && data.boards.length) {
+        // Workspace file
         captureBoard(activeBoardId);
-        const added = [];
-        data.boards.forEach(b => {
-          const copy = JSON.parse(JSON.stringify(b));
-          copy.id = uid();
-          boards.push(copy);
-          added.push(copy);
-        });
-        activeBoardId = added[added.length - 1].id;
+        let lastId;
+        data.boards.forEach(b => { const copy = JSON.parse(JSON.stringify(b)); copy.id = uid(); boards.push(copy); lastId = copy.id; });
+        activeBoardId = lastId;
         restoreBoard(boards.find(b => b.id === activeBoardId));
         renderTabs(); saveToStorage();
-      // Single board file: { id, name, items, ... }
       } else if (data.items && data.name) {
+        // Single board file
         data.id = uid(); data.name = data.name + ' (imported)';
         captureBoard(activeBoardId);
-        boards.push(data);
-        activeBoardId = data.id;
-        restoreBoard(data);
-        renderTabs(); saveToStorage();
+        boards.push(data); activeBoardId = data.id;
+        restoreBoard(data); renderTabs(); saveToStorage();
       } else {
         alert('Invalid file. Expected a board or workspace JSON.');
       }
@@ -564,24 +550,67 @@ document.getElementById('add-board-btn').addEventListener('click', addBoard);
 document.getElementById('duplicate-board-btn').addEventListener('click', duplicateBoard);
 
 // ════════════════════════════════════════════════
-// CANVAS ENGINE
+// CANVAS ENGINE — infinite pan via CSS transform
 // ════════════════════════════════════════════════
-const canvas = document.getElementById('canvas');
-const world = document.getElementById('world');
+const canvas  = document.getElementById('canvas');
+const world   = document.getElementById('world');
+const dotGrid = document.getElementById('dot-grid');
 const fileInput = document.getElementById('file-input');
 const uploadBtn = document.getElementById('upload-btn');
-const textBtn = document.getElementById('text-btn');
-const clearBtn = document.getElementById('clear-btn');
-const dropHint = document.getElementById('drop-hint');
-const countEl = document.getElementById('count');
+const textBtn   = document.getElementById('text-btn');
+const clearBtn  = document.getElementById('clear-btn');
+const dropHint  = document.getElementById('drop-hint');
+const countEl   = document.getElementById('count');
 const aspectBtn = document.getElementById('aspect-btn');
 const labelsBtn = document.getElementById('labels-btn');
-const customBg = document.getElementById('custom-bg');
+const customBg  = document.getElementById('custom-bg');
 
 let nodes = [], selected = null, drag = null, resize = null;
 let lockAspect = false, showLabels = true;
+let panX = 0, panY = 0;
 let spaceDown = false, panDrag = null;
 
+// ── PAN ──────────────────────────────────
+function setPan(x, y) {
+  panX = x; panY = y;
+  world.style.transform = `translate(${panX}px,${panY}px)`;
+  // Shift dot grid so it appears to tile infinitely
+  const GRID = 28;
+  const ox = ((panX % GRID) + GRID) % GRID;
+  const oy = ((panY % GRID) + GRID) % GRID;
+  dotGrid.style.backgroundPosition = `${ox}px ${oy}px`;
+}
+
+// Two-finger trackpad scroll / mousewheel → pan
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  setPan(panX - e.deltaX, panY - e.deltaY);
+  saveToStorageDebounced();
+}, { passive: false });
+
+// Middle-click drag or Space+drag → pan
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 1 || (spaceDown && e.button === 0)) {
+    e.preventDefault();
+    panDrag = { startPanX: panX, startPanY: panY, startX: e.clientX, startY: e.clientY };
+    canvas.classList.add('panning');
+    return;
+  }
+  if (!e.target.closest('.canvas-node')) {
+    if (selected) { selected.classList.remove('selected'); selected = null; }
+  }
+});
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.target.isContentEditable && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
+    spaceDown = true; canvas.classList.add('pan-ready'); e.preventDefault();
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space') { spaceDown = false; canvas.classList.remove('pan-ready'); }
+});
+
+// ── TOGGLE BUTTONS ───────────────────────
 aspectBtn.addEventListener('click', () => { lockAspect = !lockAspect; aspectBtn.classList.toggle('active', lockAspect); });
 labelsBtn.classList.add('active'); canvas.classList.add('labels-on');
 labelsBtn.addEventListener('click', () => {
@@ -590,6 +619,7 @@ labelsBtn.addEventListener('click', () => {
   canvas.classList.toggle('labels-on', showLabels);
 });
 
+// ── BG COLOR ─────────────────────────────
 document.getElementById('swatches').addEventListener('click', e => {
   const sw = e.target.closest('.swatch'); if (!sw) return;
   document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
@@ -605,9 +635,10 @@ customBg.addEventListener('input', () => {
 });
 
 function updateDotGrid(hex) {
-  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
-  const light=(r*299+g*587+b*114)/1000>128;
-  world.querySelector('.dot-grid').style.backgroundImage = light
+  const safeHex = /^#[0-9a-f]{6}$/i.test(hex) ? hex : '#141414';
+  const r=parseInt(safeHex.slice(1,3),16), g=parseInt(safeHex.slice(3,5),16), b=parseInt(safeHex.slice(5,7),16);
+  const light = (r*299+g*587+b*114)/1000 > 128;
+  dotGrid.style.backgroundImage = light
     ? 'radial-gradient(circle,rgba(0,0,0,0.12) 1px,transparent 1px)'
     : 'radial-gradient(circle,rgba(255,255,255,0.1) 1px,transparent 1px)';
 }
@@ -627,35 +658,12 @@ function selectNode(el) {
   selected = el; el.classList.add('selected'); el.style.zIndex = Date.now();
 }
 
-// Deselect on canvas/world background click
-canvas.addEventListener('mousedown', e => {
-  const t = e.target;
-  // Middle-click or space+drag: start panning
-  if (e.button === 1 || (spaceDown && e.button === 0)) {
-    e.preventDefault();
-    panDrag = { startX: e.clientX + canvas.scrollLeft, startY: e.clientY + canvas.scrollTop };
-    canvas.classList.add('panning');
-    return;
-  }
-  if (!t.closest('.canvas-node')) {
-    if (selected) { selected.classList.remove('selected'); selected = null; }
-  }
-});
-
-// Space key for pan mode
-window.addEventListener('keydown', e => {
-  if (e.code === 'Space' && !e.target.isContentEditable && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
-    spaceDown = true;
-    canvas.classList.add('pan-ready');
-    e.preventDefault();
-  }
-});
-window.addEventListener('keyup', e => {
-  if (e.code === 'Space') {
-    spaceDown = false;
-    canvas.classList.remove('pan-ready');
-  }
-});
+// ── DRAG & RESIZE ────────────────────────
+// Converts a viewport mouse position to world coordinates
+function toWorld(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  return { x: clientX - r.left - panX, y: clientY - r.top - panY };
+}
 
 function attachDragResize(el, isText) {
   ['tl','tr','bl','br'].forEach(cls => {
@@ -670,23 +678,20 @@ function attachDragResize(el, isText) {
     if (e.target.closest('.action-bar,.text-format-bar')) return;
     if (e.target.classList.contains('text-content') || e.target.closest('.text-content')) return;
     e.preventDefault(); selectNode(el);
-    const r = canvas.getBoundingClientRect();
-    drag = { el, offX: e.clientX - r.left + canvas.scrollLeft - el.offsetLeft, offY: e.clientY - r.top + canvas.scrollTop - el.offsetTop };
+    const w = toWorld(e.clientX, e.clientY);
+    drag = { el, offX: w.x - el.offsetLeft, offY: w.y - el.offsetTop };
   });
 }
 
 window.addEventListener('mousemove', e => {
   if (panDrag) {
-    canvas.scrollLeft = panDrag.startX - e.clientX;
-    canvas.scrollTop = panDrag.startY - e.clientY;
+    setPan(panDrag.startPanX + (e.clientX - panDrag.startX), panDrag.startPanY + (e.clientY - panDrag.startY));
     return;
   }
   if (drag) {
-    const r = canvas.getBoundingClientRect();
-    const x = e.clientX - r.left + canvas.scrollLeft - drag.offX;
-    const y = e.clientY - r.top + canvas.scrollTop - drag.offY;
-    drag.el.style.left = Math.max(0, x) + 'px';
-    drag.el.style.top  = Math.max(0, y) + 'px';
+    const w = toWorld(e.clientX, e.clientY);
+    drag.el.style.left = (w.x - drag.offX) + 'px';
+    drag.el.style.top  = (w.y - drag.offY) + 'px';
   }
   if (resize) {
     const {el,cls,startX,startY,startW,startH,startL,startT,ar,sizeReadout,isText}=resize;
@@ -702,17 +707,18 @@ window.addEventListener('mousemove', e => {
     if(sizeReadout) sizeReadout.textContent=`${Math.round(w)} × ${Math.round(el.offsetHeight)}`;
   }
 });
+
 window.addEventListener('mouseup', () => {
   if (panDrag) { panDrag = null; canvas.classList.remove('panning'); }
   drag=null; resize=null;
   if (activeBoardId) { captureBoard(activeBoardId); saveToStorage(); }
 });
 
-// Prevent default middle-click scroll behavior
-canvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
+// Suppress default middle-click scroll
+canvas.addEventListener('auxclick', e => { if (e.button===1) e.preventDefault(); });
 
 window.addEventListener('keydown', e => {
-  if (e.code === 'Space') return; // handled above
+  if (e.code === 'Space') return;
   if ((e.key==='Delete'||e.key==='Backspace') && selected) {
     const a=document.activeElement;
     if (a&&(a.isContentEditable||a.tagName==='INPUT'||a.tagName==='SELECT')) return;
@@ -724,8 +730,10 @@ window.addEventListener('keydown', e => {
 // ── IMAGE NODE ────────────────────────────
 function makeImageNode(src, filename, opts={}) {
   const W=opts.w||240, H=opts.h||180, margin=50;
-  const x = opts.x !== undefined ? opts.x : canvas.scrollLeft + margin + Math.random()*Math.max(0, canvas.clientWidth-W-margin*2);
-  const y = opts.y !== undefined ? opts.y : canvas.scrollTop  + margin + Math.random()*Math.max(0, canvas.clientHeight-H-margin*2);
+  // Place in visible area when no explicit position given
+  const vw = canvas.clientWidth, vh = canvas.clientHeight;
+  const x = opts.x !== undefined ? opts.x : -panX + margin + Math.random()*Math.max(0, vw-W-margin*2);
+  const y = opts.y !== undefined ? opts.y : -panY + margin + Math.random()*Math.max(0, vh-H-margin*2);
   const el = document.createElement('div');
   el.className='canvas-node img-node';
   el.style.cssText=`left:${x}px;top:${y}px;width:${W}px;height:${H}px;`;
@@ -755,7 +763,7 @@ function makeImageNode(src, filename, opts={}) {
   let flipped=opts.flipped||false;
   el.querySelector('.flip-btn').addEventListener('mousedown',e=>{e.stopPropagation();flipped=!flipped;el.querySelector('.img-frame').style.transform=flipped?'scaleX(-1)':'';});
   attachDragResize(el,false);
-  world.appendChild(el);nodes.push(el);
+  world.appendChild(el); nodes.push(el);
   if(!opts.silent) selectNode(el);
   updateCount();
   return el;
@@ -769,8 +777,9 @@ function restoreImageNode(item) {
 // ── TEXT NODE ─────────────────────────────
 function makeTextNode(opts={}) {
   const W=opts.w||220, margin=60;
-  const x=opts.x!==undefined?opts.x:canvas.scrollLeft + margin+Math.random()*Math.max(0,canvas.clientWidth-W-margin*2);
-  const y=opts.y!==undefined?opts.y:canvas.scrollTop  + margin+Math.random()*Math.max(0,canvas.clientHeight-120-margin*2);
+  const vw = canvas.clientWidth, vh = canvas.clientHeight;
+  const x=opts.x!==undefined?opts.x:-panX + margin+Math.random()*Math.max(0,vw-W-margin*2);
+  const y=opts.y!==undefined?opts.y:-panY + margin+Math.random()*Math.max(0,vh-120-margin*2);
   const el=document.createElement('div');
   el.className='canvas-node text-node';
   el.style.cssText=`left:${x}px;top:${y}px;width:${W}px;`;
@@ -839,7 +848,7 @@ function makeTextNode(opts={}) {
   content.addEventListener('focus',()=>selectNode(el));
   el.querySelector('.del-btn').addEventListener('mousedown',e=>{e.stopPropagation();world.removeChild(el);nodes=nodes.filter(n=>n!==el);if(selected===el)selected=null;updateCount();captureBoard(activeBoardId);saveToStorage();});
   attachDragResize(el,true);
-  world.appendChild(el);nodes.push(el);
+  world.appendChild(el); nodes.push(el);
   if(!opts.silent){selectNode(el);setTimeout(()=>content.focus(),50);}
   updateCount();
 }
