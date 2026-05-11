@@ -330,9 +330,10 @@ function restoreBoard(b) {
   updateDotGrid(bg);
   document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === bg));
 
-  // Restore pan — default to center of viewport on first visit
-  const cx = canvas.clientWidth / 2;
-  const cy = canvas.clientHeight / 2;
+  // Restore pan — default to center of viewport when no saved pan position.
+  // Use window dimensions as fallback in case canvas hasn't laid out yet.
+  const cx = (canvas.clientWidth  || window.innerWidth)  / 2;
+  const cy = (canvas.clientHeight || window.innerHeight) / 2;
   setPan(b.panX ?? cx, b.panY ?? cy);
 
   const items = [...(b.items || [])].sort((a,b) => a.z - b.z);
@@ -891,8 +892,12 @@ canvas.addEventListener('drop',e=>{e.preventDefault();canvas.classList.remove('d
 // ════════════════════════════════════════════════
 loadFromStorage();
 activeBoardId = boards[0].id;
-restoreBoard(boards[0]);
 renderTabs();
+// Defer restoreBoard until after the browser has completed its first layout
+// pass so canvas.clientWidth/Height are non-zero when we compute the center.
+requestAnimationFrame(() => {
+  restoreBoard(boards[0]);
+});
 </script>
 </body>
 </html>
