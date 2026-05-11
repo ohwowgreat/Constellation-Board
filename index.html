@@ -123,8 +123,8 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   align-items: center; justify-content: center; gap: 12px;
   pointer-events: none; transition: opacity 0.3s; z-index: 5;
 }
-#drop-hint .hint-icon { width: 56px; height: 56px; border: 1.5px dashed rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-#drop-hint p { font-size: 13px; color: rgba(255,255,255,0.25); font-family: var(--mono); }
+#drop-hint .hint-icon { width: 56px; height: 56px; border: 1.5px dashed var(--hint-fg, rgba(255,255,255,0.2)); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--hint-fg, rgba(255,255,255,0.2)); }
+#drop-hint p { font-size: 13px; color: var(--hint-fg, rgba(255,255,255,0.25)); font-family: var(--mono); }
 #drop-hover-overlay { display: none; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 12px; background: var(--accent-dim); pointer-events: none; z-index: 1000; }
 #canvas.drag-over #drop-hover-overlay { display: block; }
 
@@ -230,7 +230,7 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <div id="drop-hover-overlay"></div>
   <div id="drop-hint">
     <div class="hint-icon">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <rect x="3" y="5" width="18" height="14" rx="2"/>
         <circle cx="8.5" cy="10.5" r="1.5"/>
         <path d="M3 16l5-5 4 4 3-3 6 5"/>
@@ -642,6 +642,7 @@ function updateDotGrid(hex) {
   dotGrid.style.backgroundImage = light
     ? 'radial-gradient(circle,rgba(0,0,0,0.12) 1px,transparent 1px)'
     : 'radial-gradient(circle,rgba(255,255,255,0.1) 1px,transparent 1px)';
+  canvas.style.setProperty('--hint-fg', light ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.25)');
 }
 
 function updateCount() {
