@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="config.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -27,6 +28,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); heig
 }
 #board-bar::-webkit-scrollbar { height: 3px; }
 #board-bar::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+#tabs-container { display: flex; align-items: stretch; flex-shrink: 0; }
 .board-tab {
   display: flex; align-items: center; gap: 6px;
   padding: 0 14px; height: 38px; cursor: pointer;
@@ -57,6 +59,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); heig
   cursor: pointer; flex-shrink: 0; transition: color 0.15s;
 }
 #add-board-btn:hover { color: var(--accent); }
+#sync-status {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+  color: var(--text-muted); padding: 0 10px; white-space: nowrap;
+}
+#sync-status::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-muted); flex-shrink: 0;
+}
+#sync-status.ok::before { background: #4caf50; }
+#sync-status.busy::before { background: var(--accent); animation: sync-pulse 1s ease-in-out infinite; }
+#sync-status.bad::before { background: #ff6060; }
+#sync-status.bad { color: #ff8a8a; cursor: pointer; }
+@keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
 .board-actions {
   margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; padding-left: 12px;
 }
@@ -187,6 +203,8 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <div id="tabs-container"></div>
   <button id="add-board-btn" title="New board">+</button>
   <div class="board-actions">
+    <span id="sync-status">Local only</span>
+    <button id="sync-btn" title="Fetch the latest boards from the shared workspace">Sync</button>
     <button id="duplicate-board-btn">Duplicate</button>
     <button id="export-board-btn">Export JSON</button>
     <button id="export-pdf-btn">Export PDF</button>
@@ -261,7 +279,11 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 // ════════════════════════════════════════════════
 // BOARD STATE
 // ════════════════════════════════════════════════
-const STORAGE_KEY = 'imagecanvas_boards_v1';
+// Boards used to live only in this browser, which is why two people could
+// never open the same board. With config.js filled in they live in Supabase
+// instead and localStorage becomes a plain offline cache.
+const STORAGE_KEY = 'imagecanvas_boards_v1';         // local-only mode
+const CACHE_KEY   = 'constellation_shared_cache_v1'; // offline copy of the shared workspace
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
@@ -273,17 +295,268 @@ function defaultBoard(name = 'Board 1') {
   return { id: uid(), name, bg: '#141414', scrollX: 0, scrollY: 0, items: [] };
 }
 
-function loadFromStorage() {
+// ════════════════════════════════════════════════
+// REMOTE STORE - Supabase REST, no SDK
+// ════════════════════════════════════════════════
+const Remote = (() => {
+  const cfg    = window.CONSTELLATION_CONFIG || {};
+  const base   = String(cfg.supabaseUrl || '').replace(/\/+$/, '');
+  const key    = String(cfg.supabaseAnonKey || '');
+  const bucket = cfg.bucket || 'board-images';
+  const enabled = Boolean(base && key);
+  const publicPrefix = enabled ? base + '/storage/v1/object/public/' : null;
+
+  async function req(path, opts = {}) {
+    const res = await fetch(base + path, {
+      ...opts,
+      headers: { apikey: key, Authorization: 'Bearer ' + key, ...(opts.headers || {}) }
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(((opts.method || 'GET') + ' ' + path + ' -> ' + res.status + ' ' + detail).trim());
+    }
+    return res;
+  }
+
+  const toRow = (b, i) => ({
+    id: b.id, name: b.name || 'Board', bg: b.bg || '#141414',
+    scroll_x: Math.round(b.scrollX || 0), scroll_y: Math.round(b.scrollY || 0),
+    sort_order: i, items: b.items || []
+  });
+  const stampsOf = rows => Object.fromEntries((rows || []).map(r => [r.id, r.updated_at]));
+  const fromRow = r => ({
+    id: r.id, name: r.name, bg: r.bg,
+    scrollX: r.scroll_x || 0, scrollY: r.scroll_y || 0,
+    items: Array.isArray(r.items) ? r.items : []
+  });
+
+  return {
+    enabled, bucket, publicPrefix,
+
+    async fetchBoards() {
+      const res = await req('/rest/v1/boards?select=*&order=sort_order.asc');
+      const rows = await res.json();
+      return { boards: rows.map(fromRow), stamps: stampsOf(rows) };
+    },
+
+    // Just the edit stamps, to check nobody overwrote us while we were working.
+    async fetchStamps(ids) {
+      if (!ids.length) return {};
+      const list = ids.map(id => '"' + String(id).replace(/"/g, '') + '"').join(',');
+      const res = await req('/rest/v1/boards?select=id,updated_at&id=in.(' + encodeURIComponent(list) + ')');
+      return stampsOf(await res.json());
+    },
+
+    // entries: [{ board, index }] - index becomes sort_order, so tab order is shared too.
+    async upsert(entries) {
+      if (!entries.length) return {};
+      const res = await req('/rest/v1/boards?select=id,updated_at', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(entries.map(e => toRow(e.board, e.index)))
+      });
+      return stampsOf(await res.json().catch(() => []));
+    },
+
+    async remove(id) {
+      await req('/rest/v1/boards?id=eq.' + encodeURIComponent(id),
+                { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    },
+
+    async uploadImage(blob, filename) {
+      const fromName = String(filename || '').match(/\.([a-z0-9]{1,5})$/i);
+      const ext = (fromName ? fromName[1] : ((blob.type || '').split('/')[1] || 'png'))
+        .toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'png';
+      const path = uid() + '.' + ext;
+      await req('/storage/v1/object/' + bucket + '/' + path, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'application/octet-stream', 'x-upsert': 'true' },
+        body: blob
+      });
+      return base + '/storage/v1/object/public/' + bucket + '/' + path;
+    }
+  };
+})();
+
+// ════════════════════════════════════════════════
+// SYNC - debounced push, manual pull
+// ════════════════════════════════════════════════
+const Sync = (() => {
+  const dirty = new Set();
+  const deleted = new Set();
+  let timer = null;
+  let queue = Promise.resolve();
+  let state = Remote.enabled ? 'idle' : 'local';
+  let busyMsg = '';
+  let detail = '';
+  let savedAt = 0;
+  const seen = {}; // board id -> the updated_at we last saw, to catch stale writes
+
+  function render() {
+    const node = document.getElementById('sync-status');
+    if (!node) return;
+    const labels = {
+      local:   ['Local only', '',      'Boards live in this browser only. Fill in config.js to share them.'],
+      idle:    ['Shared',     'ok',    'Connected to the shared workspace.'],
+      loading: ['Loading',    'busy',  'Fetching boards from the shared workspace.'],
+      saving:  ['Saving',     'busy',  'Pushing your changes to the shared workspace.'],
+      saved:   ['Saved',      'ok',    'Every change is in the shared workspace.'],
+      busy:    [busyMsg,      'busy',  busyMsg],
+      error:   ['Not synced', 'bad',   'Could not reach the shared workspace. Click to retry.\n\n' + detail]
+    };
+    const spec = labels[state] || labels.idle;
+    let label = spec[0];
+    if (state === 'saved' && savedAt) {
+      const mins = Math.floor((Date.now() - savedAt) / 60000);
+      if (mins >= 1) label = 'Saved ' + mins + 'm ago';
+    }
+    node.textContent = label;
+    node.className = spec[1];
+    node.title = spec[2];
+  }
+  setInterval(render, 30000);
+
+  function set(next, info) {
+    state = next;
+    if (next === 'error') detail = info || '';
+    if (next === 'saved') savedAt = Date.now();
+    render();
+  }
+
+  function schedule(ms) {
+    if (!Remote.enabled) return;
+    // Stay red once a push has failed: further edits are still not synced.
+    if (state !== 'busy' && state !== 'loading' && state !== 'error') set('saving');
+    clearTimeout(timer);
+    timer = setTimeout(() => flush(), ms === undefined ? 900 : ms);
+  }
+
+  // Boards are written whole, so a push replaces whatever is on the server.
+  // Rather than quietly dropping someone else's work, ask first.
+  async function resolveConflicts(ids) {
+    const known = ids.filter(id => seen[id]);
+    if (!known.length) return ids;
+    let stamps;
+    try { stamps = await Remote.fetchStamps(known); }
+    catch (err) { return ids; } // cannot check: fall back to last write wins
+    const clashing = known.filter(id => stamps[id] && stamps[id] !== seen[id]);
+    if (!clashing.length) return ids;
+
+    const names = clashing.map(id => (boards.find(b => b.id === id) || {}).name || id).join(', ');
+    const many = clashing.length > 1;
+    const keepMine = confirm(
+      'Someone else changed ' + (many ? 'these boards' : 'this board') + ' since you opened ' + (many ? 'them' : 'it') + ':\n\n' +
+      names + '\n\n' +
+      'OK\t\tkeep your version and replace theirs\n' +
+      'Cancel\tdiscard your changes here and load theirs');
+    if (keepMine) { clashing.forEach(id => { seen[id] = stamps[id]; }); return ids; }
+    reloadWanted = true;
+    return ids.filter(id => !clashing.includes(id));
+  }
+
+  let reloadWanted = false;
+
+  async function runFlush() {
+    if (!dirty.size && !deleted.size) return;
+    if (activeBoardId) captureBoard(activeBoardId);
+
+    let ids   = [...dirty];   dirty.clear();
+    const gone = [...deleted]; deleted.clear();
+
+    set('saving');
+    try {
+      ids = await resolveConflicts(ids);
+      const entries = ids
+        .map(id => ({ board: boards.find(b => b.id === id), index: boards.findIndex(b => b.id === id) }))
+        .filter(e => e.board);
+      for (const id of gone) { await Remote.remove(id); delete seen[id]; }
+      Object.assign(seen, await Remote.upsert(entries));
+      set('saved');
+      if (reloadWanted) { reloadWanted = false; await reloadSharedWorkspace(); }
+    } catch (err) {
+      console.warn('Sync push failed', err);
+      ids.forEach(id => dirty.add(id));
+      gone.forEach(id => deleted.add(id));
+      set('error', err.message || String(err));
+      schedule(8000); // keep retrying quietly
+    }
+  }
+
+  function flush() {
+    if (!Remote.enabled) return queue;
+    clearTimeout(timer); timer = null;
+    queue = queue.then(runFlush, runFlush);
+    return queue;
+  }
+
+  return {
+    render,
+    hasPending: () => dirty.size > 0 || deleted.size > 0,
+    markDirty(id) { if (Remote.enabled && id) { dirty.add(id); schedule(); } },
+    markAllDirty() { if (Remote.enabled) { boards.forEach(b => dirty.add(b.id)); schedule(); } },
+    markDeleted(id) { if (Remote.enabled && id) { dirty.delete(id); deleted.add(id); schedule(); } },
+    flushNow: flush,
+    setBusy(msg) { busyMsg = msg; set('busy'); },
+    clearBusy() { busyMsg = ''; set(dirty.size || deleted.size ? 'saving' : 'saved'); },
+    async pull() {
+      if (!Remote.enabled) return null;
+      set('loading');
+      try {
+        const res = await Remote.fetchBoards();
+        Object.keys(seen).forEach(k => delete seen[k]);
+        Object.assign(seen, res.stamps);
+        set('saved');
+        return res.boards;
+      }
+      catch (err) {
+        console.warn('Sync pull failed', err);
+        set('error', err.message || String(err));
+        return null;
+      }
+    }
+  };
+})();
+
+function readBoardsFrom(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed) && parsed.length) { boards = parsed; return; } }
-  } catch(e) {}
-  boards = [defaultBoard('Board 1')];
+    const raw = localStorage.getItem(key);
+    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed) && parsed.length) return parsed; }
+  } catch (e) {}
+  return null;
+}
+
+function loadFromStorage() {
+  boards = readBoardsFrom(Remote.enabled ? CACHE_KEY : STORAGE_KEY) || [defaultBoard('Board 1')];
+}
+
+function saveLocalCache() {
+  const key = Remote.enabled ? CACHE_KEY : STORAGE_KEY;
+  try { localStorage.setItem(key, JSON.stringify(boards)); }
+  catch (e) { console.warn('Local cache write failed (quota?)', e); }
 }
 
 function saveToStorage() {
   if (activeBoardId) captureBoard(activeBoardId);
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(boards)); } catch(e) { console.warn('Storage save failed (quota?)', e); }
+  saveLocalCache();
+  Sync.markDirty(activeBoardId);
+}
+
+// Base64 images bloat every board row and are slow to hand to a second viewer,
+// so move them into Storage and keep only the URL. Used on import and on the
+// first upload of a browser's existing boards.
+async function absorbDataUrls(board) {
+  if (!Remote.enabled) return board;
+  for (const item of board.items || []) {
+    if (item && item.type === 'image' && typeof item.src === 'string' && item.src.startsWith('data:')) {
+      try {
+        const blob = await (await fetch(item.src)).blob();
+        item.src = await Remote.uploadImage(blob, item.label);
+      } catch (err) {
+        console.warn('Could not move an image into Storage; leaving it inline', err);
+      }
+    }
+  }
+  return board;
 }
 
 // ════════════════════════════════════════════════
@@ -373,15 +646,17 @@ function renderTabs() {
 function switchBoard(id) {
   if (id === activeBoardId) return;
   captureBoard(activeBoardId);
+  Sync.markDirty(activeBoardId);
   activeBoardId = id;
   const b = boards.find(b => b.id === id);
   restoreBoard(b);
   renderTabs();
-  saveToStorage();
+  saveLocalCache(); // cache only: opening a board is not an edit to push
 }
 
 function addBoard() {
   captureBoard(activeBoardId);
+  Sync.markDirty(activeBoardId);
   const b = defaultBoard(`Board ${boards.length + 1}`);
   boards.push(b);
   activeBoardId = b.id;
@@ -400,6 +675,8 @@ function deleteBoard(id) {
     restoreBoard(boards.find(b => b.id === activeBoardId));
   }
   renderTabs();
+  Sync.markDeleted(id);
+  Sync.markAllDirty(); // every later board's sort_order shifted
   saveToStorage();
 }
 
@@ -414,6 +691,7 @@ function duplicateBoard() {
   activeBoardId = copy.id;
   restoreBoard(copy);
   renderTabs();
+  Sync.markAllDirty(); // insertion shifts every later board's sort_order
   saveToStorage();
 }
 
@@ -429,7 +707,7 @@ function openRenameModal(boardId) {
   document.getElementById('modal-overlay').classList.add('open');
   setTimeout(() => { inp.focus(); inp.select(); }, 50);
   modalCallback = (val) => {
-    if (val.trim()) { b.name = val.trim(); renderTabs(); saveToStorage(); }
+    if (val.trim()) { b.name = val.trim(); renderTabs(); Sync.markDirty(b.id); saveToStorage(); }
   };
 }
 document.getElementById('modal-cancel').addEventListener('click', () => { document.getElementById('modal-overlay').classList.remove('open'); });
@@ -527,34 +805,46 @@ document.getElementById('import-btn').addEventListener('click', () => document.g
 document.getElementById('import-input').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   const reader = new FileReader();
-  reader.onload = ev => {
+  reader.onload = async ev => {
+    let added = [];
     try {
       const data = JSON.parse(ev.target.result);
       // Workspace file: { version, boards: [...] }
       if (data.version && Array.isArray(data.boards) && data.boards.length) {
         captureBoard(activeBoardId);
-        const added = [];
         data.boards.forEach(b => {
           const copy = JSON.parse(JSON.stringify(b));
           copy.id = uid();
           boards.push(copy);
           added.push(copy);
         });
-        activeBoardId = added[added.length - 1].id;
-        restoreBoard(boards.find(b => b.id === activeBoardId));
-        renderTabs(); saveToStorage();
       // Single board file: { id, name, items, ... }
       } else if (data.items && data.name) {
         data.id = uid(); data.name = data.name + ' (imported)';
         captureBoard(activeBoardId);
         boards.push(data);
-        activeBoardId = data.id;
-        restoreBoard(data);
-        renderTabs(); saveToStorage();
+        added.push(data);
       } else {
         alert('Invalid file. Expected a board or workspace JSON.');
+        return;
       }
-    } catch(err) { alert('Could not parse file.'); }
+    } catch(err) { alert('Could not parse file.'); return; }
+
+    activeBoardId = added[added.length - 1].id;
+    restoreBoard(boards.find(b => b.id === activeBoardId));
+    renderTabs(); saveToStorage();
+
+    // Imported files carry base64 images; hand them to Storage so the other
+    // people in the workspace load URLs instead of megabytes of JSON.
+    if (Remote.enabled) {
+      Sync.setBusy('Uploading images');
+      for (const b of added) await absorbDataUrls(b);
+      restoreBoard(boards.find(b => b.id === activeBoardId));
+      added.forEach(b => Sync.markDirty(b.id));
+      saveLocalCache();
+      Sync.clearBusy();
+      await Sync.flushNow();
+    }
   };
   reader.readAsText(f);
   e.target.value = '';
@@ -738,13 +1028,22 @@ function makeImageNode(src, filename, opts={}) {
       <div class="sep"></div><button class="del-btn">remove</button>
     </div>
     <div class="img-inner">
-      <div class="img-frame"><img src="${src}" draggable="false"></div>
+      <div class="img-frame"><img draggable="false"></div>
       <div class="resize-handle tl"></div><div class="resize-handle tr"></div>
       <div class="resize-handle bl"></div><div class="resize-handle br"></div>
     </div>
-    <div class="img-label" contenteditable="false" spellcheck="false">${label}</div>`;
+    <div class="img-label" contenteditable="false" spellcheck="false"></div>`;
+  el.querySelector('.img-label').textContent = label;
   const img=el.querySelector('img');
   img.addEventListener('load',()=>{el._ar=img.naturalHeight/img.naturalWidth;});
+  // Boards now arrive from a shared server, so src and label are set as
+  // properties rather than interpolated into innerHTML.
+  // Storage-hosted images opt into CORS so html2canvas can read them on PDF export.
+  if (Remote.publicPrefix && String(src).startsWith(Remote.publicPrefix)) img.crossOrigin='anonymous';
+  img.addEventListener('error',()=>{
+    if (img.crossOrigin) { img.removeAttribute('crossorigin'); img.src=src+(src.includes('?')?'&':'?')+'nocors=1'; }
+  },{once:true});
+  img.src=src;
   if(opts.flipped) el.querySelector('.img-frame').style.transform='scaleX(-1)';
   const labelEl=el.querySelector('.img-label');
   labelEl.addEventListener('dblclick',e=>{e.stopPropagation();labelEl.contentEditable='true';labelEl.focus();const r=document.createRange();r.selectNodeContents(labelEl);window.getSelection().removeAllRanges();window.getSelection().addRange(r);});
@@ -812,7 +1111,7 @@ function makeTextNode(opts={}) {
   const bgColorInp=el.querySelector('.bg-color-inp');
   const bgToggleBtn=el.querySelector('.bg-toggle-btn');
 
-  if(opts.html) content.innerHTML=opts.html;
+  if(opts.html) content.innerHTML=sanitizeRichText(opts.html);
   if(opts.fontSize){content.style.fontSize=opts.fontSize;const o=opts.fontSize.replace('px','');const opt=[...fontSizeSel.options].find(o2=>o2.value===o);if(opt)opt.selected=true;}
   if(opts.fontFamily){content.style.fontFamily=opts.fontFamily;const opt=[...fontFamilySel.options].find(o=>o.value===opts.fontFamily);if(opt)opt.selected=true;}
   if(opts.fontWeight){content.style.fontWeight=opts.fontWeight;}
@@ -844,6 +1143,22 @@ function makeTextNode(opts={}) {
   updateCount();
 }
 
+// Text nodes are rich text, so their HTML is kept. It now comes from a shared
+// server, so strip anything that could execute before it goes into the DOM.
+function sanitizeRichText(html) {
+  const tpl = document.createElement('template'); // inert: nothing runs or loads
+  tpl.innerHTML = String(html || '');
+  tpl.content.querySelectorAll('script,style,iframe,object,embed,link,meta,form,base').forEach(n => n.remove());
+  tpl.content.querySelectorAll('*').forEach(node => {
+    [...node.attributes].forEach(attr => {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on')) node.removeAttribute(attr.name);
+      else if (/^(href|src|xlink:href|action|formaction)$/.test(name) && /^\s*javascript:/i.test(attr.value)) node.removeAttribute(attr.name);
+    });
+  });
+  return tpl.innerHTML;
+}
+
 function restoreTextNode(item) {
   makeTextNode({ x:item.x, y:item.y, w:item.w, html:item.html,
     fontSize:item.fontSize, fontFamily:item.fontFamily, fontWeight:item.fontWeight,
@@ -852,12 +1167,46 @@ function restoreTextNode(item) {
 }
 
 // ── FILE LOADING ──────────────────────────
-function loadFiles(files) {
-  [...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
-    const reader=new FileReader();
-    reader.onload=e=>{makeImageNode(e.target.result,f.name);captureBoard(activeBoardId);saveToStorage();};
-    reader.readAsDataURL(f);
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
+}
+
+async function loadFiles(files) {
+  const images = [...files].filter(f => f.type.startsWith('image/'));
+  if (!images.length) return;
+
+  // Local mode keeps the old behaviour: base64 straight into the board.
+  if (!Remote.enabled) {
+    for (const f of images) {
+      makeImageNode(await fileToDataUrl(f), f.name);
+      captureBoard(activeBoardId); saveToStorage();
+    }
+    return;
+  }
+
+  // Shared mode uploads to Storage so the board only carries a URL and the
+  // other people in the workspace can actually load the image.
+  let failed = 0;
+  Sync.setBusy('Uploading ' + images.length + (images.length > 1 ? ' images' : ' image'));
+  for (const f of images) {
+    try {
+      makeImageNode(await Remote.uploadImage(f, f.name), f.name);
+    } catch (err) {
+      console.warn('Image upload failed; keeping it inline in this board', err);
+      failed++;
+      makeImageNode(await fileToDataUrl(f), f.name);
+    }
+    captureBoard(activeBoardId); saveToStorage();
+  }
+  Sync.clearBusy();
+  if (failed) {
+    alert(failed + ' image(s) could not be uploaded to shared storage and were embedded in this board instead.\n\nCheck the board-images bucket and its policies in Supabase.');
+  }
 }
 
 uploadBtn.addEventListener('click',()=>fileInput.click());
@@ -880,10 +1229,90 @@ canvas.addEventListener('drop',e=>{e.preventDefault();canvas.classList.remove('d
 // ════════════════════════════════════════════════
 // BOOT
 // ════════════════════════════════════════════════
-loadFromStorage();
-activeBoardId = boards[0].id;
-restoreBoard(boards[0]);
-renderTabs();
+// Existing single-browser boards get lifted into an empty shared workspace the
+// first time someone connects one, so nothing has to be re-made by hand.
+async function uploadLocalBoards() {
+  const local = readBoardsFrom(STORAGE_KEY);
+  if (!local || !local.some(b => (b.items || []).length)) return false;
+  Sync.setBusy('Uploading ' + local.length + (local.length > 1 ? ' local boards' : ' local board'));
+  const moved = [];
+  for (const b of local) moved.push(await absorbDataUrls(JSON.parse(JSON.stringify(b))));
+  boards = moved;
+  Sync.clearBusy();
+  return true;
+}
+
+async function reloadSharedWorkspace(preferId) {
+  const remote = await Sync.pull();
+  if (!remote) return false;
+  boards = remote.length ? remote : [defaultBoard('Board 1')];
+  showBoards(preferId === undefined ? activeBoardId : preferId);
+  saveLocalCache();
+  if (!remote.length) { Sync.markAllDirty(); }
+  return true;
+}
+
+function showBoards(preferId) {
+  activeBoardId = boards.some(b => b.id === preferId) ? preferId : boards[0].id;
+  restoreBoard(boards.find(b => b.id === activeBoardId));
+  renderTabs();
+}
+
+async function boot() {
+  // Paint the cached copy first so the canvas is usable before the network answers.
+  loadFromStorage();
+  showBoards(null);
+  Sync.render();
+
+  if (!Remote.enabled) { document.getElementById('sync-btn').hidden = true; return; }
+
+  const remote = await Sync.pull();
+  if (!remote) return; // offline: the cached copy stays on screen and the badge says so
+
+  if (remote.length) {
+    boards = remote;
+    showBoards(null);
+    saveLocalCache();
+    return;
+  }
+
+  // Nothing in the shared workspace yet.
+  if (!await uploadLocalBoards()) boards = [defaultBoard('Board 1')];
+  showBoards(null);
+  saveLocalCache();
+  Sync.markAllDirty();
+  await Sync.flushNow();
+}
+
+document.getElementById('sync-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = true;
+  try {
+    await Sync.flushNow();  // push what is pending before pulling
+    // stay on the board you were looking at
+    if (!await reloadSharedWorkspace(activeBoardId)) {
+      alert('Could not reach the shared workspace.\n\nYour changes are still saved in this browser and will be retried.');
+      return;
+    }
+    await Sync.flushNow();
+  } finally { btn.disabled = false; }
+});
+
+// Clicking the badge while it is red retries immediately.
+document.getElementById('sync-status').addEventListener('click', () => {
+  if (document.getElementById('sync-status').classList.contains('bad')) Sync.flushNow();
+});
+
+// Best effort: get pending edits out before the tab goes away or is hidden.
+document.addEventListener('visibilitychange', () => { if (document.hidden) Sync.flushNow(); });
+window.addEventListener('beforeunload', e => {
+  if (!Sync.hasPending()) return;
+  Sync.flushNow();
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+boot();
 </script>
 </body>
 </html>
