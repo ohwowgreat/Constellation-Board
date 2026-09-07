@@ -7,6 +7,10 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Live rooms (class collaboration). Config lives in firebase-config.js -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -167,17 +171,50 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 .fmt-btn.active { background: rgba(255,77,0,0.2) !important; border-color: var(--accent) !important; color: var(--accent) !important; }
 
 /* ── MODAL ── */
-#modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
-#modal-overlay.open { display: flex; }
-#modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; width: 340px; }
-#modal h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; }
-#modal input[type="text"] { width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--sans); font-size: 13px; outline: none; margin-bottom: 16px; }
-#modal input[type="text"]:focus { border-color: var(--accent); }
-#modal .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
-#modal .modal-btns button { font-size: 12px; padding: 6px 16px; }
+#modal-overlay, #share-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+#modal-overlay.open, #share-overlay.open { display: flex; }
+#modal, #share-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; width: 340px; }
+#modal h3, #share-modal h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; }
+#modal input[type="text"], #share-modal input[type="text"] { width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--sans); font-size: 13px; outline: none; margin-bottom: 16px; }
+#modal input[type="text"]:focus, #share-modal input[type="text"]:focus { border-color: var(--accent); }
+#modal .modal-btns, #share-modal .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+#modal .modal-btns button, #share-modal .modal-btns button { font-size: 12px; padding: 6px 16px; }
 
 #file-input { display: none; }
 #import-input { display: none; }
+
+/* ── LIVE ROOMS / SHARE ── */
+.board-actions button#share-btn { border-color: rgba(255,77,0,0.5); color: var(--accent); }
+.board-actions button#share-btn:hover { background: var(--accent-dim); color: var(--accent); }
+.board-actions button#share-btn.live { background: var(--accent); border-color: var(--accent); color: #fff; }
+#live-bar {
+  display: none; align-items: center; gap: 12px; padding: 5px 16px;
+  background: #1c0e06; border-bottom: 1px solid rgba(255,77,0,0.35);
+  font-size: 12px; color: var(--text-muted); flex-shrink: 0; min-height: 32px;
+}
+#live-bar.on { display: flex; }
+#live-bar .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: livepulse 1.6s infinite; flex-shrink: 0; }
+@keyframes livepulse { 0% { box-shadow: 0 0 0 0 rgba(255,77,0,0.6); } 70% { box-shadow: 0 0 0 7px rgba(255,77,0,0); } 100% { box-shadow: 0 0 0 0 rgba(255,77,0,0); } }
+#live-bar .live-code { font-family: var(--mono); font-size: 13px; color: var(--text); letter-spacing: 0.14em; }
+#live-bar .live-link { font-family: var(--mono); font-size: 11px; color: var(--text-muted); max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#live-bar button { font-size: 11px; padding: 3px 9px; }
+#live-bar .live-status { margin-left: auto; font-family: var(--mono); font-size: 11px; }
+#live-bar .live-status.offline { color: #ff6060; }
+#share-modal { width: 440px; }
+#share-modal p { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin-bottom: 12px; }
+#share-modal .share-section { padding: 14px 0; border-top: 1px solid var(--border); }
+#share-modal .share-section.first { border-top: none; padding-top: 0; }
+#share-modal h4 { font-size: 12px; font-weight: 500; margin-bottom: 8px; color: var(--text); }
+#share-modal .row { display: flex; gap: 8px; align-items: center; }
+#share-modal .row input[type="text"] { margin-bottom: 0; flex: 1; font-family: var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+#share-modal .big-code { font-family: var(--mono); font-size: 42px; letter-spacing: 0.22em; color: var(--accent); text-align: center; padding: 6px 0 2px; user-select: all; }
+#share-modal .share-link { font-family: var(--mono); font-size: 11px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; word-break: break-all; user-select: all; margin: 10px 0; }
+#share-modal .share-error { color: #ff6060; font-size: 12px; min-height: 16px; margin-top: 8px; }
+#share-modal ol { font-size: 12px; color: var(--text-muted); line-height: 1.6; padding-left: 18px; margin-bottom: 12px; }
+#share-modal code { font-family: var(--mono); font-size: 11px; color: var(--text); background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+#share-modal .recent { display: flex; flex-wrap: wrap; gap: 6px; }
+#share-modal .recent button { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; }
+#share-modal a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -187,12 +224,24 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <div id="tabs-container"></div>
   <button id="add-board-btn" title="New board">+</button>
   <div class="board-actions">
+    <button id="share-btn" title="Share this board live with a class">Share</button>
     <button id="duplicate-board-btn">Duplicate</button>
     <button id="export-board-btn">Export JSON</button>
     <button id="export-pdf-btn">Export PDF</button>
     <button id="export-workspace-btn">Export All</button>
     <button id="import-btn">Import</button>
   </div>
+</div>
+
+<!-- LIVE ROOM BAR -->
+<div id="live-bar">
+  <span class="live-dot"></span>
+  <span>Live room</span>
+  <span class="live-code" id="live-code"></span>
+  <span class="live-link" id="live-link"></span>
+  <button id="live-copy-btn">Copy link</button>
+  <span class="live-status" id="live-status"></span>
+  <button id="live-leave-btn">Leave</button>
 </div>
 
 <!-- TOOLBAR -->
@@ -257,6 +306,11 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   </div>
 </div>
 
+<!-- SHARE / LIVE ROOM MODAL -->
+<div id="share-overlay">
+  <div id="share-modal"></div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════
 // BOARD STATE
@@ -268,6 +322,7 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 // boards = [{ id, name, bg, scrollX, scrollY, items: [...serialized] }]
 let boards = [];
 let activeBoardId = null;
+let liveMode = false; // true while connected to a shared room (see LIVE ROOMS below)
 
 function defaultBoard(name = 'Board 1') {
   return { id: uid(), name, bg: '#141414', scrollX: 0, scrollY: 0, items: [] };
@@ -282,6 +337,7 @@ function loadFromStorage() {
 }
 
 function saveToStorage() {
+  if (liveMode) return; // room boards live in Firebase, never overwrite the local workspace
   if (activeBoardId) captureBoard(activeBoardId);
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(boards)); } catch(e) { console.warn('Storage save failed (quota?)', e); }
 }
@@ -289,22 +345,63 @@ function saveToStorage() {
 // ════════════════════════════════════════════════
 // SERIALIZE / DESERIALIZE NODES
 // ════════════════════════════════════════════════
-function serializeNodes() {
-  return nodes.map(el => {
-    const base = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, z: parseInt(el.style.zIndex)||0 };
-    if (el.classList.contains('img-node')) {
-      return { ...base, type: 'image', src: el.querySelector('img').src, label: el.querySelector('.img-label').textContent, flipped: el.querySelector('.img-frame').style.transform === 'scaleX(-1)' };
-    }
-    if (el.classList.contains('text-node')) {
-      const c = el.querySelector('.text-content');
-      const tb = el.querySelector('.text-border');
-      return { ...base, type: 'text', html: c.innerHTML,
-        fontSize: c.style.fontSize || '16px', fontFamily: c.style.fontFamily || '',
-        fontWeight: c.style.fontWeight || '400', fontStyle: c.style.fontStyle || 'normal',
-        color: c.style.color || '#e8e8e8', bgColor: tb.style.background || 'transparent' };
-    }
-    return null;
-  }).filter(Boolean);
+function serializeNode(el) {
+  const base = { id: el.dataset.id, x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, z: parseInt(el.style.zIndex)||0 };
+  if (el.classList.contains('img-node')) {
+    return { ...base, type: 'image', src: el.querySelector('img').src, label: el.querySelector('.img-label').textContent, flipped: el.querySelector('.img-frame').style.transform === 'scaleX(-1)' };
+  }
+  if (el.classList.contains('text-node')) {
+    const c = el.querySelector('.text-content');
+    const tb = el.querySelector('.text-border');
+    return { ...base, type: 'text', html: c.innerHTML,
+      fontSize: c.style.fontSize || '16px', fontFamily: c.style.fontFamily || '',
+      fontWeight: c.style.fontWeight || '400', fontStyle: c.style.fontStyle || 'normal',
+      color: c.style.color || '#e8e8e8', bgColor: tb.style.background || 'transparent' };
+  }
+  return null;
+}
+function serializeNodes() { return nodes.map(serializeNode).filter(Boolean); }
+
+function nodeById(id) { return nodes.find(n => n.dataset.id === id) || null; }
+
+function clearNodes() {
+  nodes.forEach(n => { try { world.removeChild(n); } catch(e){} });
+  nodes = []; selected = null;
+}
+
+// Remove a single node from the canvas (does not notify the store)
+function removeNodeEl(el) {
+  try { world.removeChild(el); } catch(e) {}
+  nodes = nodes.filter(n => n !== el);
+  if (selected === el) selected = null;
+  updateCount();
+}
+
+function restoreItem(item) {
+  if (item.type === 'image') restoreImageNode(item);
+  else if (item.type === 'text') restoreTextNode(item);
+}
+
+function applyBoardBg(bg) {
+  bg = bg || '#141414';
+  if (canvas.style.background !== bg) canvas.style.background = bg;
+  const hex = /^#[0-9a-f]{6}$/i.test(bg) ? bg : '#141414';
+  if (customBg.value !== hex) customBg.value = hex;
+  updateDotGrid(hex);
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === bg));
+}
+
+// ── Change notifications ──
+// Every edit to a node funnels through here so the local store and the live room stay in sync.
+let localSaveTimer = null;
+function scheduleLocalSave() { clearTimeout(localSaveTimer); localSaveTimer = setTimeout(saveToStorage, 150); }
+function notifyNodeChanged(el, isNew) {
+  if (liveMode) { Live.pushItem(el, isNew); return; }
+  scheduleLocalSave();
+}
+function notifyNodeRemoved(id) {
+  if (liveMode) { Live.removeItem(id); return; }
+  scheduleLocalSave();
 }
 
 function captureBoard(boardId) {
@@ -317,20 +414,11 @@ function captureBoard(boardId) {
 }
 
 function restoreBoard(b) {
-  nodes.forEach(n => { try { world.removeChild(n); } catch(e){} });
-  nodes = []; selected = null;
-
-  const bg = b.bg || '#141414';
-  canvas.style.background = bg;
-  customBg.value = /^#[0-9a-f]{6}$/i.test(bg) ? bg : '#141414';
-  updateDotGrid(bg);
-  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === bg));
+  clearNodes();
+  applyBoardBg(b.bg);
 
   const items = [...(b.items || [])].sort((a,b) => a.z - b.z);
-  items.forEach(item => {
-    if (item.type === 'image') restoreImageNode(item);
-    else if (item.type === 'text') restoreTextNode(item);
-  });
+  items.forEach(restoreItem);
 
   requestAnimationFrame(() => {
     canvas.scrollLeft = b.scrollX || 0;
@@ -372,6 +460,7 @@ function renderTabs() {
 
 function switchBoard(id) {
   if (id === activeBoardId) return;
+  if (liveMode) { Live.enterBoard(id); return; }
   captureBoard(activeBoardId);
   activeBoardId = id;
   const b = boards.find(b => b.id === id);
@@ -381,6 +470,7 @@ function switchBoard(id) {
 }
 
 function addBoard() {
+  if (liveMode) { Live.addBoard(); return; }
   captureBoard(activeBoardId);
   const b = defaultBoard(`Board ${boards.length + 1}`);
   boards.push(b);
@@ -393,6 +483,7 @@ function addBoard() {
 function deleteBoard(id) {
   if (boards.length === 1) { alert("You need at least one board."); return; }
   if (!confirm(`Delete "${boards.find(b=>b.id===id)?.name}"? This cannot be undone.`)) return;
+  if (liveMode) { Live.deleteBoard(id); return; }
   const idx = boards.findIndex(b => b.id === id);
   boards.splice(idx, 1);
   if (activeBoardId === id) {
@@ -404,6 +495,7 @@ function deleteBoard(id) {
 }
 
 function duplicateBoard() {
+  if (liveMode) { Live.duplicateBoard(); return; }
   captureBoard(activeBoardId);
   const src = boards.find(b => b.id === activeBoardId);
   const copy = JSON.parse(JSON.stringify(src));
@@ -429,7 +521,10 @@ function openRenameModal(boardId) {
   document.getElementById('modal-overlay').classList.add('open');
   setTimeout(() => { inp.focus(); inp.select(); }, 50);
   modalCallback = (val) => {
-    if (val.trim()) { b.name = val.trim(); renderTabs(); saveToStorage(); }
+    if (val.trim()) {
+      b.name = val.trim(); renderTabs();
+      if (liveMode) Live.renameBoard(b.id, b.name); else saveToStorage();
+    }
   };
 }
 document.getElementById('modal-cancel').addEventListener('click', () => { document.getElementById('modal-overlay').classList.remove('open'); });
@@ -461,8 +556,9 @@ document.getElementById('export-board-btn').addEventListener('click', () => {
 });
 
 // Export all boards as workspace JSON
-document.getElementById('export-workspace-btn').addEventListener('click', () => {
+document.getElementById('export-workspace-btn').addEventListener('click', async () => {
   captureBoard(activeBoardId);
+  if (liveMode) await Live.fillAllBoardItems();
   const data = { version: 1, boards };
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -532,6 +628,7 @@ document.getElementById('import-input').addEventListener('change', e => {
       const data = JSON.parse(ev.target.result);
       // Workspace file: { version, boards: [...] }
       if (data.version && Array.isArray(data.boards) && data.boards.length) {
+        if (liveMode) { Live.importBoards(data.boards); return; }
         captureBoard(activeBoardId);
         const added = [];
         data.boards.forEach(b => {
@@ -546,6 +643,7 @@ document.getElementById('import-input').addEventListener('change', e => {
       // Single board file: { id, name, items, ... }
       } else if (data.items && data.name) {
         data.id = uid(); data.name = data.name + ' (imported)';
+        if (liveMode) { Live.importBoards([data]); return; }
         captureBoard(activeBoardId);
         boards.push(data);
         activeBoardId = data.id;
@@ -595,14 +693,20 @@ document.getElementById('swatches').addEventListener('click', e => {
   document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
   sw.classList.add('active'); canvas.style.background = sw.dataset.color;
   customBg.value = sw.dataset.color; updateDotGrid(sw.dataset.color);
-  if (activeBoardId) { boards.find(b=>b.id===activeBoardId).bg = sw.dataset.color; saveToStorage(); }
+  setBoardBg(sw.dataset.color);
 });
 customBg.addEventListener('input', () => {
   canvas.style.background = customBg.value;
   document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
   updateDotGrid(customBg.value);
-  if (activeBoardId) { boards.find(b=>b.id===activeBoardId).bg = customBg.value; saveToStorage(); }
+  setBoardBg(customBg.value);
 });
+function setBoardBg(color) {
+  if (!activeBoardId) return;
+  const b = boards.find(b=>b.id===activeBoardId);
+  if (b) b.bg = color;
+  if (liveMode) Live.setBg(activeBoardId, color); else saveToStorage();
+}
 
 function updateDotGrid(hex) {
   const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
@@ -625,6 +729,7 @@ function updateCount() {
 function selectNode(el) {
   if (selected && selected !== el) selected.classList.remove('selected');
   selected = el; el.classList.add('selected'); el.style.zIndex = Date.now();
+  if (liveMode) Live.pushItem(el);
 }
 
 // Deselect on canvas/world background click
@@ -704,8 +809,10 @@ window.addEventListener('mousemove', e => {
 });
 window.addEventListener('mouseup', () => {
   if (panDrag) { panDrag = null; canvas.classList.remove('panning'); }
+  const moved = drag ? drag.el : (resize ? resize.el : null);
   drag=null; resize=null;
-  if (activeBoardId) { captureBoard(activeBoardId); saveToStorage(); }
+  if (moved) notifyNodeChanged(moved);
+  if (activeBoardId && !liveMode) { captureBoard(activeBoardId); saveToStorage(); }
 });
 
 // Prevent default middle-click scroll behavior
@@ -716,8 +823,10 @@ window.addEventListener('keydown', e => {
   if ((e.key==='Delete'||e.key==='Backspace') && selected) {
     const a=document.activeElement;
     if (a&&(a.isContentEditable||a.tagName==='INPUT'||a.tagName==='SELECT')) return;
-    world.removeChild(selected); nodes=nodes.filter(n=>n!==selected); selected=null; updateCount();
-    if (activeBoardId) { captureBoard(activeBoardId); saveToStorage(); }
+    const id = selected.dataset.id;
+    removeNodeEl(selected);
+    notifyNodeRemoved(id);
+    if (activeBoardId && !liveMode) { captureBoard(activeBoardId); saveToStorage(); }
   }
 });
 
@@ -728,6 +837,7 @@ function makeImageNode(src, filename, opts={}) {
   const y = opts.y !== undefined ? opts.y : canvas.scrollTop  + margin + Math.random()*Math.max(0, canvas.clientHeight-H-margin*2);
   const el = document.createElement('div');
   el.className='canvas-node img-node';
+  el.dataset.id = opts.id || uid();
   el.style.cssText=`left:${x}px;top:${y}px;width:${W}px;height:${H}px;`;
   el._ar=H/W;
   const label=opts.label!==undefined?opts.label:(filename?filename.replace(/\.[^.]+$/,''):'image');
@@ -748,21 +858,21 @@ function makeImageNode(src, filename, opts={}) {
   if(opts.flipped) el.querySelector('.img-frame').style.transform='scaleX(-1)';
   const labelEl=el.querySelector('.img-label');
   labelEl.addEventListener('dblclick',e=>{e.stopPropagation();labelEl.contentEditable='true';labelEl.focus();const r=document.createRange();r.selectNodeContents(labelEl);window.getSelection().removeAllRanges();window.getSelection().addRange(r);});
-  labelEl.addEventListener('blur',()=>{labelEl.contentEditable='false';});
+  labelEl.addEventListener('blur',()=>{labelEl.contentEditable='false';notifyNodeChanged(el);});
   labelEl.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();labelEl.blur();}});
   labelEl.addEventListener('mousedown',e=>{if(labelEl.contentEditable==='true')e.stopPropagation();});
-  el.querySelector('.del-btn').addEventListener('mousedown',e=>{e.stopPropagation();world.removeChild(el);nodes=nodes.filter(n=>n!==el);if(selected===el)selected=null;updateCount();captureBoard(activeBoardId);saveToStorage();});
+  el.querySelector('.del-btn').addEventListener('mousedown',e=>{e.stopPropagation();const id=el.dataset.id;removeNodeEl(el);notifyNodeRemoved(id);if(!liveMode){captureBoard(activeBoardId);saveToStorage();}});
   let flipped=opts.flipped||false;
-  el.querySelector('.flip-btn').addEventListener('mousedown',e=>{e.stopPropagation();flipped=!flipped;el.querySelector('.img-frame').style.transform=flipped?'scaleX(-1)':'';});
+  el.querySelector('.flip-btn').addEventListener('mousedown',e=>{e.stopPropagation();flipped=!flipped;el.querySelector('.img-frame').style.transform=flipped?'scaleX(-1)':'';notifyNodeChanged(el);});
   attachDragResize(el,false);
   world.appendChild(el);nodes.push(el);
-  if(!opts.silent) selectNode(el);
+  if(!opts.silent){ selectNode(el); notifyNodeChanged(el, true); }
   updateCount();
   return el;
 }
 
 function restoreImageNode(item) {
-  makeImageNode(item.src, null, { x:item.x, y:item.y, w:item.w, h:item.h, label:item.label, flipped:item.flipped, silent:true });
+  makeImageNode(item.src, null, { id:item.id, x:item.x, y:item.y, w:item.w, h:item.h, label:item.label, flipped:item.flipped, silent:true });
   if (item.z) nodes[nodes.length-1].style.zIndex = item.z;
 }
 
@@ -773,6 +883,7 @@ function makeTextNode(opts={}) {
   const y=opts.y!==undefined?opts.y:canvas.scrollTop  + margin+Math.random()*Math.max(0,canvas.clientHeight-120-margin*2);
   const el=document.createElement('div');
   el.className='canvas-node text-node';
+  el.dataset.id = opts.id || uid();
   el.style.cssText=`left:${x}px;top:${y}px;width:${W}px;`;
   el.innerHTML=`
     <div class="text-format-bar">
@@ -824,51 +935,87 @@ function makeTextNode(opts={}) {
   if(isBold) boldBtn.classList.add('active');
   if(isItalic) italicBtn.classList.add('active');
 
-  fontFamilySel.addEventListener('change',()=>{content.style.fontFamily=fontFamilySel.value;});
+  const notify=()=>notifyNodeChanged(el);
+  let inputTimer=null;
+  fontFamilySel.addEventListener('change',()=>{content.style.fontFamily=fontFamilySel.value;notify();});
   fontFamilySel.addEventListener('mousedown',e=>e.stopPropagation());
-  fontSizeSel.addEventListener('change',()=>{content.style.fontSize=fontSizeSel.value+'px';});
+  fontSizeSel.addEventListener('change',()=>{content.style.fontSize=fontSizeSel.value+'px';notify();});
   fontSizeSel.addEventListener('mousedown',e=>e.stopPropagation());
-  boldBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();isBold=!isBold;content.style.fontWeight=isBold?'700':'400';boldBtn.classList.toggle('active',isBold);});
-  italicBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();isItalic=!isItalic;content.style.fontStyle=isItalic?'italic':'normal';italicBtn.classList.toggle('active',isItalic);});
-  textColorInp.addEventListener('input',()=>{content.style.color=textColorInp.value;});
+  boldBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();isBold=!isBold;content.style.fontWeight=isBold?'700':'400';boldBtn.classList.toggle('active',isBold);notify();});
+  italicBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();isItalic=!isItalic;content.style.fontStyle=isItalic?'italic':'normal';italicBtn.classList.toggle('active',isItalic);notify();});
+  textColorInp.addEventListener('input',()=>{content.style.color=textColorInp.value;notify();});
   textColorInp.addEventListener('mousedown',e=>e.stopPropagation());
-  bgColorInp.addEventListener('input',()=>{if(bgOn)textBorder.style.background=bgColorInp.value;});
+  bgColorInp.addEventListener('input',()=>{if(bgOn){textBorder.style.background=bgColorInp.value;notify();}});
   bgColorInp.addEventListener('mousedown',e=>e.stopPropagation());
-  bgToggleBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();bgOn=!bgOn;textBorder.style.background=bgOn?bgColorInp.value:'transparent';bgToggleBtn.classList.toggle('active',bgOn);});
+  bgToggleBtn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();bgOn=!bgOn;textBorder.style.background=bgOn?bgColorInp.value:'transparent';bgToggleBtn.classList.toggle('active',bgOn);notify();});
   content.addEventListener('mousedown',e=>{e.stopPropagation();selectNode(el);});
   content.addEventListener('focus',()=>selectNode(el));
-  el.querySelector('.del-btn').addEventListener('mousedown',e=>{e.stopPropagation();world.removeChild(el);nodes=nodes.filter(n=>n!==el);if(selected===el)selected=null;updateCount();captureBoard(activeBoardId);saveToStorage();});
+  content.addEventListener('input',()=>{clearTimeout(inputTimer);inputTimer=setTimeout(notify,400);});
+  content.addEventListener('blur',()=>{clearTimeout(inputTimer);notify();});
+  el.querySelector('.del-btn').addEventListener('mousedown',e=>{e.stopPropagation();const id=el.dataset.id;removeNodeEl(el);notifyNodeRemoved(id);if(!liveMode){captureBoard(activeBoardId);saveToStorage();}});
   attachDragResize(el,true);
   world.appendChild(el);nodes.push(el);
-  if(!opts.silent){selectNode(el);setTimeout(()=>content.focus(),50);}
+  if(!opts.silent){selectNode(el);notifyNodeChanged(el,true);setTimeout(()=>content.focus(),50);}
   updateCount();
 }
 
 function restoreTextNode(item) {
-  makeTextNode({ x:item.x, y:item.y, w:item.w, html:item.html,
+  makeTextNode({ id:item.id, x:item.x, y:item.y, w:item.w, html:item.html,
     fontSize:item.fontSize, fontFamily:item.fontFamily, fontWeight:item.fontWeight,
     fontStyle:item.fontStyle, color:item.color, bgColor:item.bgColor, silent:true });
   if (item.z) nodes[nodes.length-1].style.zIndex = item.z;
 }
 
 // ── FILE LOADING ──────────────────────────
-function loadFiles(files) {
-  [...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
-    const reader=new FileReader();
-    reader.onload=e=>{makeImageNode(e.target.result,f.name);captureBoard(activeBoardId);saveToStorage();};
-    reader.readAsDataURL(f);
-  });
+function readFileAsDataUrl(f) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(f); });
+}
+
+// Shrink big photos before they enter a board: keeps localStorage under quota and makes
+// live rooms fast for a whole class. Longest side capped at MAX_IMAGE_PX; transparency kept.
+const MAX_IMAGE_PX = 1600;
+async function shrinkImage(dataUrl, type) {
+  if (type === 'image/gif' || type === 'image/svg+xml') return dataUrl;
+  let img;
+  try { img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl; }); }
+  catch(e) { return dataUrl; }
+  const scale = Math.min(1, MAX_IMAGE_PX / Math.max(img.naturalWidth, img.naturalHeight));
+  if (scale === 1 && dataUrl.length < 400000) return dataUrl;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  let hasAlpha = false;
+  if (type === 'image/png' || type === 'image/webp') {
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < d.length; i += 4) { if (d[i] < 255) { hasAlpha = true; break; } }
+  }
+  const out = hasAlpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.85);
+  return out.length < dataUrl.length ? out : dataUrl;
+}
+
+async function loadFiles(files) {
+  const imgs = [...files].filter(f => f.type.startsWith('image/'));
+  for (const f of imgs) {
+    try {
+      const raw = await readFileAsDataUrl(f);
+      const src = await shrinkImage(raw, f.type);
+      makeImageNode(src, f.name);
+    } catch(e) { console.warn('Could not load image', f.name, e); }
+  }
+  if (!liveMode) { captureBoard(activeBoardId); saveToStorage(); }
 }
 
 uploadBtn.addEventListener('click',()=>fileInput.click());
 fileInput.addEventListener('change',()=>{loadFiles(fileInput.files);fileInput.value='';});
-textBtn.addEventListener('click',()=>{makeTextNode();captureBoard(activeBoardId);saveToStorage();});
+textBtn.addEventListener('click',()=>{makeTextNode();if(!liveMode){captureBoard(activeBoardId);saveToStorage();}});
 
 clearBtn.addEventListener('click',()=>{
   if(!nodes.length) return;
   if(confirm(`Clear all items on "${boards.find(b=>b.id===activeBoardId)?.name}"?`)){
-    nodes.forEach(n=>world.removeChild(n));nodes=[];selected=null;updateCount();
-    captureBoard(activeBoardId);saveToStorage();
+    clearNodes();updateCount();
+    if(liveMode) Live.clearItems(); else { captureBoard(activeBoardId);saveToStorage(); }
   }
 });
 
@@ -878,12 +1025,430 @@ canvas.addEventListener('dragleave',e=>{if(!canvas.contains(e.relatedTarget))can
 canvas.addEventListener('drop',e=>{e.preventDefault();canvas.classList.remove('drag-over');loadFiles(e.dataTransfer.files);});
 
 // ════════════════════════════════════════════════
+// LIVE ROOMS  (shared boards for a class, via Firebase Realtime Database)
+// ════════════════════════════════════════════════
+// Data layout in the database:
+//   rooms/{CODE}/meta               { name, createdAt }
+//   rooms/{CODE}/boards/{boardId}   { name, bg, order }
+//   rooms/{CODE}/items/{boardId}/{itemId}   one serialized node (see serializeNode)
+//   rooms/{CODE}/presence/{clientId} true   (who is connected right now)
+// Every client edits the same tree. Writes are per item, so dragging one image
+// never re-uploads the rest of the board. Last write wins.
+
+const ROOM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const RECENT_ROOMS_KEY = 'constellation_recent_rooms';
+let localBoardsBackup = null, localActiveBackup = null;
+
+const Live = {
+  code: null, db: null, clientId: uid(),
+  roomRef: null, boardsRef: null, itemsRef: null,
+  online: 0, connected: false, pushTimers: new Map(), scrollMemo: {},
+  pendingBoardId: null, connCb: null,
+
+  configured() { return !!window.FIREBASE_CONFIG; },
+  available() { return this.configured() && !!(window.firebase && firebase.database); },
+  init() {
+    if (this.db) return;
+    if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    this.db = firebase.database();
+  },
+  roomUrl(code) { return location.origin + location.pathname + '?room=' + code; },
+  normalizeCode(str) { return (str || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); },
+
+  async generateCode() {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      let c = ''; for (let i = 0; i < 6; i++) c += ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)];
+      const snap = await this.db.ref('rooms/' + c + '/meta').once('value');
+      if (!snap.exists()) return c;
+    }
+    throw new Error('Could not find a free room code, please try again.');
+  },
+
+  // Create a new room seeded with one board, then join it.
+  async create(board) {
+    this.init();
+    const code = await this.generateCode();
+    const items = {};
+    (board.items || []).forEach(it => { const id = it.id || uid(); items[id] = { ...it, id }; });
+    await this.db.ref('rooms/' + code).set({
+      meta: { name: board.name, createdAt: Date.now() },
+      boards: { [board.id]: { name: board.name, bg: board.bg || '#141414', order: Date.now() } },
+      items: { [board.id]: items }
+    });
+    await this.join(code, board.id);
+    return code;
+  },
+
+  async join(code, preferredBoardId) {
+    this.init();
+    code = this.normalizeCode(code);
+    if (!code) throw new Error('Enter a room code.');
+    const snap = await this.db.ref('rooms/' + code + '/boards').once('value');
+    if (!snap.exists()) throw new Error('No room with code ' + code + '.');
+
+    if (liveMode) this.leave({ silent: true });
+    else { saveToStorage(); localBoardsBackup = boards; localActiveBackup = activeBoardId; }
+
+    liveMode = true;
+    this.code = code;
+    this.pendingBoardId = preferredBoardId || null;
+    this.roomRef = this.db.ref('rooms/' + code);
+    this.boardsRef = this.roomRef.child('boards');
+    boards = []; activeBoardId = null;
+    clearNodes(); updateCount();
+
+    this.boardsRef.on('value', s => this.onBoards(s));
+
+    this.connCb = s => {
+      this.connected = !!s.val();
+      if (this.connected && this.roomRef) {
+        const me = this.roomRef.child('presence/' + this.clientId);
+        me.onDisconnect().remove();
+        me.set(true);
+      }
+      updateLiveUI();
+    };
+    this.db.ref('.info/connected').on('value', this.connCb);
+    this.roomRef.child('presence').on('value', s => { this.online = s.numChildren(); updateLiveUI(); });
+
+    history.replaceState(null, '', this.roomUrl(code));
+    rememberRoom(code);
+    updateLiveUI();
+  },
+
+  leave(opts = {}) {
+    if (!liveMode) return;
+    if (this.itemsRef) this.itemsRef.off();
+    if (this.boardsRef) this.boardsRef.off();
+    if (this.roomRef) {
+      this.roomRef.child('presence').off();
+      this.roomRef.child('presence/' + this.clientId).remove();
+    }
+    if (this.connCb) this.db.ref('.info/connected').off('value', this.connCb);
+    this.pushTimers.forEach(t => clearTimeout(t)); this.pushTimers.clear();
+    this.itemsRef = this.boardsRef = this.roomRef = this.connCb = null;
+    this.code = null; this.online = 0; this.connected = false; this.scrollMemo = {};
+    liveMode = false;
+    if (opts.silent) return; // caller is about to join another room
+
+    boards = (localBoardsBackup && localBoardsBackup.length) ? localBoardsBackup : [defaultBoard('Board 1')];
+    activeBoardId = (localActiveBackup && boards.find(b => b.id === localActiveBackup)) ? localActiveBackup : boards[0].id;
+    localBoardsBackup = null; localActiveBackup = null;
+    restoreBoard(boards.find(b => b.id === activeBoardId));
+    renderTabs();
+    history.replaceState(null, '', location.pathname);
+    updateLiveUI();
+  },
+
+  // ── boards list ──
+  onBoards(snap) {
+    const list = [];
+    snap.forEach(c => {
+      const v = c.val() || {};
+      list.push({ id: c.key, name: v.name || 'Board', bg: v.bg || '#141414', order: v.order || 0, items: [] });
+    });
+    list.sort((a, b) => a.order - b.order);
+    boards = list;
+    if (!boards.length) {
+      // Someone deleted the last board out from under us. Keep the room usable.
+      const id = uid();
+      this.boardsRef.child(id).set({ name: 'Board 1', bg: '#141414', order: Date.now() });
+      return;
+    }
+    const active = boards.find(b => b.id === activeBoardId);
+    if (!active) {
+      const want = this.pendingBoardId && boards.find(b => b.id === this.pendingBoardId) ? this.pendingBoardId : boards[0].id;
+      this.pendingBoardId = null;
+      this.enterBoard(want);
+    } else {
+      applyBoardBg(active.bg);
+      renderTabs();
+    }
+  },
+
+  enterBoard(boardId) {
+    if (activeBoardId) this.scrollMemo[activeBoardId] = { x: canvas.scrollLeft, y: canvas.scrollTop };
+    if (this.itemsRef) this.itemsRef.off();
+    this.pushTimers.forEach(t => clearTimeout(t)); this.pushTimers.clear();
+    clearNodes(); updateCount();
+    activeBoardId = boardId;
+    const b = boards.find(x => x.id === boardId);
+    if (b) applyBoardBg(b.bg);
+    const sc = this.scrollMemo[boardId] || { x: 0, y: 0 };
+    requestAnimationFrame(() => { canvas.scrollLeft = sc.x; canvas.scrollTop = sc.y; });
+
+    this.itemsRef = this.roomRef.child('items/' + boardId);
+    this.itemsRef.on('child_added',   s => this.onItem(s.key, s.val()));
+    this.itemsRef.on('child_changed', s => this.onItem(s.key, s.val()));
+    this.itemsRef.on('child_removed', s => { const el = nodeById(s.key); if (el) removeNodeEl(el); });
+    renderTabs();
+  },
+
+  // ── incoming item changes ──
+  onItem(id, item) {
+    if (!item || !item.type) return;
+    item = { ...item, id };
+    const el = nodeById(id);
+    if (!el) { restoreItem(item); return; }
+    if ((drag && drag.el === el) || (resize && resize.el === el)) return; // we are moving it right now
+    const cur = serializeNode(el);
+    const GEOM = ['x', 'y', 'w', 'h', 'z'];
+    const contentChanged = Object.keys(item).some(k => k !== 'id' && !GEOM.includes(k) && item[k] !== cur[k]);
+    if (contentChanged) {
+      if (el.contains(document.activeElement)) return; // someone is typing in it here; our next push wins
+      const wasSelected = selected === el;
+      removeNodeEl(el);
+      restoreItem(item);
+      const fresh = nodeById(id);
+      if (wasSelected && fresh) { selected = fresh; fresh.classList.add('selected'); }
+    } else {
+      if (item.x !== cur.x) el.style.left = item.x + 'px';
+      if (item.y !== cur.y) el.style.top = item.y + 'px';
+      if (item.w !== cur.w) el.style.width = item.w + 'px';
+      if (item.type === 'image' && item.h !== cur.h) el.style.height = item.h + 'px';
+      if (item.z !== cur.z) el.style.zIndex = item.z || 0;
+      const sr = el.querySelector('.size-readout');
+      if (sr) sr.textContent = `${Math.round(el.offsetWidth)} × ${Math.round(el.offsetHeight)}`;
+    }
+  },
+
+  // ── outgoing item changes ──
+  pushItem(el, isNew) {
+    if (!this.itemsRef) return;
+    const id = el.dataset.id;
+    if (isNew) el._needsFullPush = true;
+    const ref = this.itemsRef; // bind to the board that was active when the edit happened
+    clearTimeout(this.pushTimers.get(id));
+    this.pushTimers.set(id, setTimeout(() => {
+      this.pushTimers.delete(id);
+      if (!nodes.includes(el)) return;
+      const item = serializeNode(el);
+      if (!item) return;
+      if (el._needsFullPush) { el._needsFullPush = false; ref.child(id).set(item); return; }
+      if (item.type === 'image') delete item.src; // never re-upload pixels for a move
+      ref.child(id).update(item);
+    }, 60));
+  },
+  removeItem(id) {
+    clearTimeout(this.pushTimers.get(id)); this.pushTimers.delete(id);
+    if (this.itemsRef) this.itemsRef.child(id).remove();
+  },
+  clearItems() { if (this.itemsRef) this.itemsRef.set(null); },
+
+  // ── board operations ──
+  addBoard() {
+    const id = uid();
+    this.boardsRef.child(id).set({ name: `Board ${boards.length + 1}`, bg: '#141414', order: Date.now() });
+    this.enterBoard(id);
+  },
+  deleteBoard(id) {
+    this.boardsRef.child(id).remove();
+    this.roomRef.child('items/' + id).remove();
+  },
+  renameBoard(id, name) { this.boardsRef.child(id).update({ name }); },
+  setBg(id, bg) { this.boardsRef.child(id).update({ bg }); },
+  duplicateBoard() {
+    const src = boards.find(b => b.id === activeBoardId);
+    if (!src) return;
+    const newId = uid();
+    const items = {};
+    serializeNodes().forEach(it => { const nid = uid(); items[nid] = { ...it, id: nid }; });
+    this.roomRef.child('items/' + newId).set(items);
+    this.boardsRef.child(newId).set({ name: src.name + ' copy', bg: src.bg || '#141414', order: Date.now() });
+    this.enterBoard(newId);
+  },
+  importBoards(list) {
+    let last = null, order = Date.now();
+    list.forEach(b => {
+      const newId = uid();
+      const items = {};
+      (b.items || []).forEach(it => { const nid = uid(); items[nid] = { ...it, id: nid }; });
+      this.roomRef.child('items/' + newId).set(items);
+      this.boardsRef.child(newId).set({ name: b.name || 'Imported', bg: b.bg || '#141414', order: order++ });
+      last = newId;
+    });
+    if (last) this.enterBoard(last);
+  },
+  // For "Export All": load every board's items, not just the one on screen.
+  async fillAllBoardItems() {
+    const snap = await this.roomRef.child('items').once('value');
+    const all = snap.val() || {};
+    boards.forEach(b => {
+      if (b.id === activeBoardId) return;
+      b.items = Object.values(all[b.id] || {}).sort((a, c) => (a.z || 0) - (c.z || 0));
+    });
+  }
+};
+
+function rememberRoom(code) {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_ROOMS_KEY) || '[]').filter(r => r.code !== code);
+    list.unshift({ code, at: Date.now() });
+    localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(list.slice(0, 6)));
+  } catch(e) {}
+}
+function recentRooms() { try { return JSON.parse(localStorage.getItem(RECENT_ROOMS_KEY) || '[]'); } catch(e) { return []; } }
+
+function copyText(text, btn) {
+  const done = () => { if (btn) { const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = t, 1200); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => prompt('Copy this link:', text));
+  else prompt('Copy this link:', text);
+}
+
+// ── live bar ──
+const liveBar = document.getElementById('live-bar');
+const shareBtn = document.getElementById('share-btn');
+function updateLiveUI() {
+  liveBar.classList.toggle('on', liveMode);
+  shareBtn.classList.toggle('live', liveMode);
+  shareBtn.textContent = liveMode ? 'Live · ' + Live.code : 'Share';
+  if (!liveMode) return;
+  document.getElementById('live-code').textContent = Live.code;
+  document.getElementById('live-link').textContent = Live.roomUrl(Live.code);
+  const st = document.getElementById('live-status');
+  if (Live.connected) { st.textContent = Live.online + ' online'; st.classList.remove('offline'); }
+  else { st.textContent = 'reconnecting…'; st.classList.add('offline'); }
+}
+document.getElementById('live-copy-btn').addEventListener('click', e => copyText(Live.roomUrl(Live.code), e.target));
+document.getElementById('live-leave-btn').addEventListener('click', () => Live.leave());
+
+// ── share modal ──
+const shareOverlay = document.getElementById('share-overlay');
+const shareModal = document.getElementById('share-modal');
+function openShareModal() { renderShareModal(); shareOverlay.classList.add('open'); }
+function closeShareModal() { shareOverlay.classList.remove('open'); }
+shareOverlay.addEventListener('click', e => { if (e.target === shareOverlay) closeShareModal(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && shareOverlay.classList.contains('open')) closeShareModal(); });
+shareBtn.addEventListener('click', openShareModal);
+
+function esc(str) { return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderShareModal() {
+  const setupHtml = `
+    <h3>Set up live sharing</h3>
+    <p>Live rooms need a free Firebase database so every laptop in the room can read and write the same board. One-time setup, about five minutes:</p>
+    <ol>
+      <li>Go to <a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a> and create a project.</li>
+      <li>Build → Realtime Database → Create database → start in <b>test mode</b>.</li>
+      <li>Project settings → Your apps → Web (<code>&lt;/&gt;</code>) → register the app → copy the <code>firebaseConfig</code> object.</li>
+      <li>Paste it into <code>firebase-config.js</code> next to <code>index.html</code>, save, and publish (commit and push).</li>
+    </ol>
+    <p>Full instructions and the recommended database rules are in the project README.</p>
+    <div class="modal-btns"><button class="primary" id="share-close">Close</button></div>`;
+
+  const noLibHtml = `
+    <h3>Live sharing unavailable</h3>
+    <p>The Firebase library did not load. Check the internet connection, or whether the school network blocks <code>gstatic.com</code> and <code>firebaseio.com</code>, then reload the page.</p>
+    <div class="modal-btns"><button class="primary" id="share-close">Close</button></div>`;
+
+  const cur = boards.find(b => b.id === activeBoardId);
+  const recents = recentRooms().filter(r => r.code !== Live.code);
+  const recentHtml = recents.length ? `
+    <div class="share-section">
+      <h4>Recent rooms</h4>
+      <div class="recent">${recents.map(r => `<button data-join="${esc(r.code)}">${esc(r.code)}</button>`).join('')}</div>
+    </div>` : '';
+
+  const idleHtml = `
+    <h3>Share with a class</h3>
+    <div class="share-section first">
+      <h4>Start a live room from “${esc(cur ? cur.name : 'this board')}”</h4>
+      <p>You get a short code and a link. Anyone who opens the link sees the board and can add, move, and edit alongside everyone else, in real time. The room stays saved online for next lesson.</p>
+      <button class="primary" id="share-create">Create room</button>
+    </div>
+    <div class="share-section">
+      <h4>Join a room</h4>
+      <div class="row"><input type="text" id="share-code" placeholder="ROOM CODE" maxlength="12" autocomplete="off"><button class="primary" id="share-join">Join</button></div>
+    </div>
+    ${recentHtml}
+    <div class="share-error" id="share-error"></div>
+    <div class="modal-btns"><button id="share-close">Cancel</button></div>`;
+
+  const liveHtml = `
+    <h3>Live room</h3>
+    <div class="big-code">${esc(Live.code || '')}</div>
+    <p style="text-align:center">Students open this link, or open the board and enter the code under Share → Join.</p>
+    <div class="share-link" id="share-link-text">${esc(Live.roomUrl(Live.code || ''))}</div>
+    <div class="row" style="justify-content:center">
+      <button id="share-copy">Copy link</button>
+      <button id="share-copy-code">Copy code</button>
+    </div>
+    <div class="share-section" style="margin-top:14px">
+      <p>Leaving takes you back to your own boards. The room and everything on it stays online, and you can rejoin with the code any time.</p>
+      <div class="modal-btns">
+        <button class="danger" id="share-leave">Leave room</button>
+        <button class="primary" id="share-close">Done</button>
+      </div>
+    </div>`;
+
+  shareModal.innerHTML = !Live.configured() ? setupHtml : (!Live.available() ? noLibHtml : (liveMode ? liveHtml : idleHtml));
+
+  const $ = id => shareModal.querySelector('#' + id);
+  const errEl = $('share-error');
+  const showErr = msg => { if (errEl) errEl.textContent = msg; else alert(msg); };
+  const busy = (btn, on) => { if (!btn) return; btn.disabled = on; btn.textContent = on ? 'Please wait…' : btn.dataset.label; };
+
+  if ($('share-close')) $('share-close').addEventListener('click', closeShareModal);
+  if ($('share-leave')) $('share-leave').addEventListener('click', () => { Live.leave(); closeShareModal(); });
+  if ($('share-copy')) $('share-copy').addEventListener('click', e => copyText(Live.roomUrl(Live.code), e.target));
+  if ($('share-copy-code')) $('share-copy-code').addEventListener('click', e => copyText(Live.code, e.target));
+
+  const createBtn = $('share-create');
+  if (createBtn) {
+    createBtn.dataset.label = createBtn.textContent;
+    createBtn.addEventListener('click', async () => {
+      busy(createBtn, true);
+      try {
+        captureBoard(activeBoardId);
+        const board = JSON.parse(JSON.stringify(boards.find(b => b.id === activeBoardId)));
+        await Live.create(board);
+        renderShareModal();
+      } catch(err) { console.error(err); showErr(friendlyError(err)); busy(createBtn, false); }
+    });
+  }
+  const joinBtn = $('share-join'), codeInp = $('share-code');
+  const doJoin = async code => {
+    busy(joinBtn, true);
+    try { await Live.join(code); closeShareModal(); }
+    catch(err) { console.error(err); showErr(friendlyError(err)); busy(joinBtn, false); }
+  };
+  if (joinBtn) {
+    joinBtn.dataset.label = joinBtn.textContent;
+    joinBtn.addEventListener('click', () => doJoin(codeInp.value));
+    codeInp.addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(codeInp.value); });
+    setTimeout(() => codeInp.focus(), 50);
+  }
+  shareModal.querySelectorAll('[data-join]').forEach(b => b.addEventListener('click', () => doJoin(b.dataset.join)));
+}
+
+function friendlyError(err) {
+  const m = (err && err.message) || String(err);
+  if (/permission_denied|permission denied/i.test(m)) return 'The database refused the request. Check the Realtime Database rules in the Firebase console (see README).';
+  return m;
+}
+
+// ════════════════════════════════════════════════
 // BOOT
 // ════════════════════════════════════════════════
 loadFromStorage();
 activeBoardId = boards[0].id;
 restoreBoard(boards[0]);
 renderTabs();
+updateLiveUI();
+
+// Opened from a share link? Join straight away.
+(function autoJoin() {
+  const code = new URLSearchParams(location.search).get('room');
+  if (!code) return;
+  if (!Live.available()) { openShareModal(); return; }
+  Live.join(code).catch(err => {
+    console.error(err);
+    history.replaceState(null, '', location.pathname);
+    openShareModal();
+    const e = shareModal.querySelector('#share-error');
+    if (e) e.textContent = friendlyError(err);
+  });
+})();
 </script>
 </body>
 </html>
