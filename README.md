@@ -2,7 +2,7 @@
 
 Warburg style arrangement. Drop images and text on an infinite canvas, arrange them, export to PDF or JSON.
 
-Live at: https://ohwowgreat.github.io/Constellation-Board/
+Live at: https://constellation.classroomtools.io/
 
 ## Where boards are saved
 
@@ -69,7 +69,7 @@ window.FIREBASE_CONFIG = {
 };
 ```
 
-Commit and push (or edit the file directly on GitHub). GitHub Pages republishes within a minute or two. The web config is safe to publish: what people can do is governed by the database rules, not by the config.
+Commit and push to `main` (or edit the file directly on GitHub). The site at constellation.classroomtools.io redeploys from `main` within a minute or two. The web config is safe to publish: what people can do is governed by the database rules, not by the config.
 
 ### Using a room in class
 
