@@ -111,12 +111,17 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 #canvas.pan-ready { cursor: grab; }
 #canvas.panning { cursor: grabbing; }
 
+#zoom-box { position: relative; width: 4000px; height: 3000px; flex-shrink: 0; }
 #world {
-  position: relative;
+  position: absolute; top: 0; left: 0;
   width: 4000px;
   height: 3000px;
-  flex-shrink: 0;
+  transform-origin: 0 0;
 }
+.zoom-group { gap: 2px; }
+.zoom-group button { padding: 6px 9px; }
+#zoom-readout { font-family: var(--mono); font-size: 11px; min-width: 46px; text-align: center; color: var(--text-muted); }
+#zoom-readout:hover { color: var(--text); }
 
 .dot-grid { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px); background-size: 28px 28px; pointer-events: none; }
 #drop-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; pointer-events: none; transition: opacity 0.3s; z-index: 5; }
@@ -275,6 +280,12 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
     </div>
     <input type="color" class="custom-color" id="custom-bg" value="#141414">
   </div>
+  <div class="tool-group zoom-group">
+    <button id="zoom-out-btn" title="Zoom out (ctrl + minus)">−</button>
+    <button id="zoom-readout" title="Reset to 100% (ctrl + 0)">100%</button>
+    <button id="zoom-in-btn" title="Zoom in (ctrl + plus)">+</button>
+    <button id="zoom-fit-btn" title="Fit everything on screen (ctrl + 1)">Fit</button>
+  </div>
   <div class="tool-group">
     <button class="danger" id="clear-btn">Clear board</button>
   </div>
@@ -282,8 +293,10 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 </div>
 
 <div id="canvas">
-  <div id="world">
-    <div class="dot-grid"></div>
+  <div id="zoom-box">
+    <div id="world">
+      <div class="dot-grid"></div>
+    </div>
   </div>
   <div id="drop-hover-overlay"></div>
   <div id="drop-hint">
@@ -296,7 +309,7 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
     </div>
     <p>drop images · click + images or T+ text to begin</p>
   </div>
-  <div id="pan-hint">middle-click or space+drag to pan</div>
+  <div id="pan-hint">middle-click or space+drag to pan · ctrl+scroll or pinch to zoom</div>
 </div>
 
 <input type="file" id="file-input" multiple accept="image/*">
@@ -600,6 +613,8 @@ document.getElementById('export-pdf-btn').addEventListener('click', async () => 
   const cropW = maxX - minX + padding * 2;
   const cropH = maxY - minY + padding * 2;
 
+  const prevZoom = zoom, prevSX = canvas.scrollLeft, prevSY = canvas.scrollTop;
+  world.style.transform = 'none'; // html2canvas renders the unscaled world
   try {
     const cvs = await html2canvas(world, {
       useCORS: true,
@@ -621,6 +636,8 @@ document.getElementById('export-pdf-btn').addEventListener('click', async () => 
     console.error('PDF export failed:', err);
     alert('PDF export failed. Please try again.');
   } finally {
+    world.style.transform = `scale(${prevZoom})`;
+    canvas.scrollLeft = prevSX; canvas.scrollTop = prevSY;
     btn.textContent = 'Export PDF';
     btn.disabled = false;
   }
@@ -687,6 +704,73 @@ const customBg = document.getElementById('custom-bg');
 let nodes = [], selected = null, drag = null, resize = null;
 let lockAspect = false, showLabels = true;
 let spaceDown = false, panDrag = null;
+
+// ── ZOOM ──────────────────────────────────
+// The world is scaled with a CSS transform; #zoom-box gives the scroll area the matching size.
+// Zoom is per screen only (never shared in a live room). Node positions stay in world units.
+const WORLD_W = 4000, WORLD_H = 3000, ZOOM_MIN = 0.25, ZOOM_MAX = 3;
+let zoom = 1;
+const zoomBox = document.getElementById('zoom-box');
+const zoomReadout = document.getElementById('zoom-readout');
+
+// Convert a mouse position to world coordinates
+function toWorld(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (clientX - r.left + canvas.scrollLeft) / zoom, y: (clientY - r.top + canvas.scrollTop) / zoom };
+}
+
+// Set zoom keeping the world point under (cx, cy) fixed on screen; defaults to the view centre.
+function setZoom(z, cx, cy) {
+  z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+  const r = canvas.getBoundingClientRect();
+  if (cx === undefined) { cx = r.left + canvas.clientWidth / 2; cy = r.top + canvas.clientHeight / 2; }
+  const mx = cx - r.left, my = cy - r.top;
+  const wx = (canvas.scrollLeft + mx) / zoom, wy = (canvas.scrollTop + my) / zoom;
+  zoom = z;
+  world.style.transform = `scale(${z})`;
+  zoomBox.style.width = WORLD_W * z + 'px';
+  zoomBox.style.height = WORLD_H * z + 'px';
+  canvas.scrollLeft = wx * z - mx;
+  canvas.scrollTop = wy * z - my;
+  zoomReadout.textContent = Math.round(z * 100) + '%';
+}
+
+function zoomToFit() {
+  if (!nodes.length) { setZoom(1); return; }
+  let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+  nodes.forEach(n => {
+    minX = Math.min(minX, n.offsetLeft); minY = Math.min(minY, n.offsetTop);
+    maxX = Math.max(maxX, n.offsetLeft + n.offsetWidth); maxY = Math.max(maxY, n.offsetTop + n.offsetHeight + 30);
+  });
+  const pad = 60;
+  const z = Math.min(canvas.clientWidth / (maxX - minX + pad * 2), canvas.clientHeight / (maxY - minY + pad * 2));
+  setZoom(Math.min(1.5, z));
+  canvas.scrollLeft = ((minX + maxX) / 2) * zoom - canvas.clientWidth / 2;
+  canvas.scrollTop = ((minY + maxY) / 2) * zoom - canvas.clientHeight / 2;
+}
+
+document.getElementById('zoom-in-btn').addEventListener('click', () => setZoom(zoom * 1.2));
+document.getElementById('zoom-out-btn').addEventListener('click', () => setZoom(zoom / 1.2));
+document.getElementById('zoom-fit-btn').addEventListener('click', zoomToFit);
+zoomReadout.addEventListener('click', () => setZoom(1));
+
+// ctrl/cmd + scroll wheel, or trackpad pinch (browsers report pinch as ctrl+wheel)
+canvas.addEventListener('wheel', e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0025));
+  setZoom(zoom * Math.min(1.3, Math.max(0.77, factor)), e.clientX, e.clientY);
+}, { passive: false });
+
+window.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const a = document.activeElement;
+  if (a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'SELECT')) return;
+  if (e.key === '=' || e.key === '+') { e.preventDefault(); setZoom(zoom * 1.2); }
+  else if (e.key === '-') { e.preventDefault(); setZoom(zoom / 1.2); }
+  else if (e.key === '0') { e.preventDefault(); setZoom(1); }
+  else if (e.key === '1') { e.preventDefault(); zoomToFit(); }
+});
 
 aspectBtn.addEventListener('click', () => { lockAspect = !lockAspect; aspectBtn.classList.toggle('active', lockAspect); });
 labelsBtn.classList.add('active'); canvas.classList.add('labels-on');
@@ -784,8 +868,8 @@ function attachDragResize(el, isText) {
     if (e.target.closest('.action-bar,.text-format-bar')) return;
     if (e.target.classList.contains('text-content') || e.target.closest('.text-content')) return;
     e.preventDefault(); selectNode(el);
-    const r = canvas.getBoundingClientRect();
-    drag = { el, offX: e.clientX - r.left + canvas.scrollLeft - el.offsetLeft, offY: e.clientY - r.top + canvas.scrollTop - el.offsetTop };
+    const w = toWorld(e.clientX, e.clientY);
+    drag = { el, offX: w.x - el.offsetLeft, offY: w.y - el.offsetTop };
   });
 }
 
@@ -796,15 +880,15 @@ window.addEventListener('mousemove', e => {
     return;
   }
   if (drag) {
-    const r = canvas.getBoundingClientRect();
-    const x = e.clientX - r.left + canvas.scrollLeft - drag.offX;
-    const y = e.clientY - r.top + canvas.scrollTop - drag.offY;
+    const w = toWorld(e.clientX, e.clientY);
+    const x = w.x - drag.offX;
+    const y = w.y - drag.offY;
     drag.el.style.left = Math.max(0, x) + 'px';
     drag.el.style.top  = Math.max(0, y) + 'px';
   }
   if (resize) {
     const {el,cls,startX,startY,startW,startH,startL,startT,ar,sizeReadout,isText}=resize;
-    const dx=e.clientX-startX, dy=e.clientY-startY, minW=80, minH=isText?36:60;
+    const dx=(e.clientX-startX)/zoom, dy=(e.clientY-startY)/zoom, minW=80, minH=isText?36:60;
     let w=startW,h=startH,l=startL,t=startT;
     const useAr=lockAspect&&ar&&!isText;
     if      (cls==='br'){w=Math.max(minW,startW+dx);h=useAr?w*ar:Math.max(minH,startH+dy);}
@@ -842,8 +926,8 @@ window.addEventListener('keydown', e => {
 // ── IMAGE NODE ────────────────────────────
 function makeImageNode(src, filename, opts={}) {
   const W=opts.w||240, H=opts.h||180, margin=50;
-  const x = opts.x !== undefined ? opts.x : canvas.scrollLeft + margin + Math.random()*Math.max(0, canvas.clientWidth-W-margin*2);
-  const y = opts.y !== undefined ? opts.y : canvas.scrollTop  + margin + Math.random()*Math.max(0, canvas.clientHeight-H-margin*2);
+  const x = opts.x !== undefined ? opts.x : canvas.scrollLeft/zoom + margin + Math.random()*Math.max(0, canvas.clientWidth/zoom-W-margin*2);
+  const y = opts.y !== undefined ? opts.y : canvas.scrollTop/zoom  + margin + Math.random()*Math.max(0, canvas.clientHeight/zoom-H-margin*2);
   const el = document.createElement('div');
   el.className='canvas-node img-node';
   el.dataset.id = opts.id || uid();
@@ -888,8 +972,8 @@ function restoreImageNode(item) {
 // ── TEXT NODE ─────────────────────────────
 function makeTextNode(opts={}) {
   const W=opts.w||220, margin=60;
-  const x=opts.x!==undefined?opts.x:canvas.scrollLeft + margin+Math.random()*Math.max(0,canvas.clientWidth-W-margin*2);
-  const y=opts.y!==undefined?opts.y:canvas.scrollTop  + margin+Math.random()*Math.max(0,canvas.clientHeight-120-margin*2);
+  const x=opts.x!==undefined?opts.x:canvas.scrollLeft/zoom + margin+Math.random()*Math.max(0,canvas.clientWidth/zoom-W-margin*2);
+  const y=opts.y!==undefined?opts.y:canvas.scrollTop/zoom  + margin+Math.random()*Math.max(0,canvas.clientHeight/zoom-120-margin*2);
   const el=document.createElement('div');
   el.className='canvas-node text-node';
   el.dataset.id = opts.id || uid();
