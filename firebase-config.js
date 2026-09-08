@@ -20,4 +20,13 @@
 // The web config is safe to publish: access is controlled by the
 // database rules in the Firebase console, not by this file.
 // ─────────────────────────────────────────────────────────────
-window.FIREBASE_CONFIG = null;
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAtTEPJawNBLLqPXIcl7BeCfhvkb1DmDpI",
+  authDomain: "constellation-c3428.firebaseapp.com",
+  databaseURL: "https://constellation-c3428-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "constellation-c3428",
+  storageBucket: "constellation-c3428.firebasestorage.app",
+  messagingSenderId: "592147078747",
+  appId: "1:592147078747:web:6df19e5032927cbabba97e",
+  measurementId: "G-VR04WSCZRS"
+};
