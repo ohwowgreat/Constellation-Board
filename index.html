@@ -100,42 +100,28 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 
 /* ── CANVAS & WORLD ── */
 #canvas {
-  flex: 1; position: relative; overflow: auto;
+  flex: 1; position: relative; overflow: hidden;
   background: var(--canvas-bg); transition: background 0.3s;
+  touch-action: none;
 }
-#canvas::-webkit-scrollbar { width: 8px; height: 8px; }
-#canvas::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-#canvas::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-#canvas::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
-#canvas::-webkit-scrollbar-corner { background: rgba(0,0,0,0.2); }
 #canvas.pan-ready { cursor: grab; }
 #canvas.panning { cursor: grabbing; }
 
-#zoom-box { position: relative; width: 4000px; height: 3000px; flex-shrink: 0; }
-#world {
-  position: absolute; top: 0; left: 0;
-  width: 4000px;
-  height: 3000px;
-  transform-origin: 0 0;
-}
+/* The world has no size of its own: it is an origin that is panned and zoomed with a transform.
+   Nodes can sit at any coordinate, negative included, so the board extends in every direction. */
+#world { position: absolute; top: 0; left: 0; width: 0; height: 0; transform-origin: 0 0; }
 .zoom-group { gap: 2px; }
 .zoom-group button { padding: 6px 9px; }
 #zoom-readout { font-family: var(--mono); font-size: 11px; min-width: 46px; text-align: center; color: var(--text-muted); }
 #zoom-readout:hover { color: var(--text); }
 
 .dot-grid { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px); background-size: 28px 28px; pointer-events: none; }
+#pdf-stage { position: fixed; left: 0; top: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 #drop-hint { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; pointer-events: none; transition: opacity 0.3s; z-index: 5; }
 #drop-hint .hint-icon { width: 56px; height: 56px; border: 1.5px dashed rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; }
 #drop-hint p { font-size: 13px; color: rgba(255,255,255,0.25); font-family: var(--mono); }
 #drop-hover-overlay { display: none; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 12px; background: var(--accent-dim); pointer-events: none; z-index: 1000; }
 #canvas.drag-over #drop-hover-overlay { display: block; }
-
-/* pan hint */
-#pan-hint {
-  position: absolute; bottom: 12px; right: 16px;
-  font-family: var(--mono); font-size: 10px; color: rgba(255,255,255,0.2);
-  pointer-events: none; z-index: 5; user-select: none;
-}
 
 /* ── NODES ── */
 .canvas-node { position: absolute; user-select: none; cursor: grab; }
@@ -166,7 +152,6 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 #canvas.light-bg #drop-hint p { color: rgba(0,0,0,0.35); }
 #canvas.light-bg #drop-hint .hint-icon { border-color: rgba(0,0,0,0.2); }
 #canvas.light-bg #drop-hint svg { stroke: rgba(0,0,0,0.3); }
-#canvas.light-bg #pan-hint { color: rgba(0,0,0,0.3); }
 #canvas.light-bg .text-content:empty::before { color: rgba(0,0,0,0.3); }
 
 .text-node { min-width: 100px; }
@@ -293,11 +278,8 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 </div>
 
 <div id="canvas">
-  <div id="zoom-box">
-    <div id="world">
-      <div class="dot-grid"></div>
-    </div>
-  </div>
+  <div class="dot-grid"></div>
+  <div id="world"></div>
   <div id="drop-hover-overlay"></div>
   <div id="drop-hint">
     <div class="hint-icon">
@@ -309,7 +291,6 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
     </div>
     <p>drop images · click + images or T+ text to begin</p>
   </div>
-  <div id="pan-hint">middle-click or space+drag to pan · ctrl+scroll or pinch to zoom</div>
 </div>
 
 <input type="file" id="file-input" multiple accept="image/*">
@@ -340,13 +321,13 @@ const STORAGE_KEY = 'imagecanvas_boards_v1';
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
-// boards = [{ id, name, bg, scrollX, scrollY, items: [...serialized] }]
+// boards = [{ id, name, bg, panX, panY, items: [...serialized] }]  (older files carry scrollX/scrollY instead)
 let boards = [];
 let activeBoardId = null;
 let liveMode = false; // true while connected to a shared room (see LIVE ROOMS below)
 
 function defaultBoard(name = 'Board 1') {
-  return { id: uid(), name, bg: '#141414', scrollX: 0, scrollY: 0, items: [] };
+  return { id: uid(), name, bg: '#141414', panX: 0, panY: 0, items: [] };
 }
 
 function loadFromStorage() {
@@ -430,8 +411,8 @@ function captureBoard(boardId) {
   if (!b) return;
   b.items = serializeNodes();
   b.bg = canvas.style.background || '#141414';
-  b.scrollX = canvas.scrollLeft;
-  b.scrollY = canvas.scrollTop;
+  b.panX = panX;
+  b.panY = panY;
 }
 
 function restoreBoard(b) {
@@ -441,10 +422,7 @@ function restoreBoard(b) {
   const items = [...(b.items || [])].sort((a,b) => a.z - b.z);
   items.forEach(restoreItem);
 
-  requestAnimationFrame(() => {
-    canvas.scrollLeft = b.scrollX || 0;
-    canvas.scrollTop = b.scrollY || 0;
-  });
+  setPan(b.panX !== undefined ? b.panX : -(b.scrollX || 0), b.panY !== undefined ? b.panY : -(b.scrollY || 0));
 
   updateCount();
 }
@@ -608,20 +586,31 @@ document.getElementById('export-pdf-btn').addEventListener('click', async () => 
     maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
   });
 
-  const cropX = Math.max(0, minX - padding);
-  const cropY = Math.max(0, minY - padding);
-  const cropW = maxX - minX + padding * 2;
-  const cropH = maxY - minY + padding * 2;
+  const cropX = minX - padding;
+  const cropY = minY - padding;
+  const cropW = Math.round(maxX - minX + padding * 2);
+  const cropH = Math.round(maxY - minY + padding * 2);
 
-  const prevZoom = zoom, prevSX = canvas.scrollLeft, prevSY = canvas.scrollTop;
-  world.style.transform = 'none'; // html2canvas renders the unscaled world
+  // Copy the nodes into an offscreen stage at 100% with the crop origin at (0,0),
+  // so the render is independent of the current pan and zoom.
+  const stage = document.createElement('div');
+  stage.id = 'pdf-stage';
+  stage.style.width = cropW + 'px'; stage.style.height = cropH + 'px';
+  stage.style.background = canvas.style.background || '#141414';
+  stage.className = canvas.classList.contains('labels-on') ? 'labels-on' : '';
+  [...nodes].sort((a, b) => (parseInt(a.style.zIndex)||0) - (parseInt(b.style.zIndex)||0)).forEach(n => {
+    const c = n.cloneNode(true);
+    c.classList.remove('selected');
+    c.style.left = (n.offsetLeft - cropX) + 'px';
+    c.style.top = (n.offsetTop - cropY) + 'px';
+    stage.appendChild(c);
+  });
+  document.body.appendChild(stage);
   try {
-    const cvs = await html2canvas(world, {
+    const cvs = await html2canvas(stage, {
       useCORS: true,
       scale: 2,
       backgroundColor: canvas.style.background || '#141414',
-      x: cropX,
-      y: cropY,
       width: cropW,
       height: cropH,
       logging: false
@@ -636,8 +625,7 @@ document.getElementById('export-pdf-btn').addEventListener('click', async () => 
     console.error('PDF export failed:', err);
     alert('PDF export failed. Please try again.');
   } finally {
-    world.style.transform = `scale(${prevZoom})`;
-    canvas.scrollLeft = prevSX; canvas.scrollTop = prevSY;
+    stage.remove();
     btn.textContent = 'Export PDF';
     btn.disabled = false;
   }
@@ -705,18 +693,32 @@ let nodes = [], selected = null, drag = null, resize = null;
 let lockAspect = false, showLabels = true;
 let spaceDown = false, panDrag = null;
 
-// ── ZOOM ──────────────────────────────────
-// The world is scaled with a CSS transform; #zoom-box gives the scroll area the matching size.
-// Zoom is per screen only (never shared in a live room). Node positions stay in world units.
-const WORLD_W = 4000, WORLD_H = 3000, ZOOM_MIN = 0.25, ZOOM_MAX = 3;
-let zoom = 1;
-const zoomBox = document.getElementById('zoom-box');
+// ── VIEWPORT: PAN + ZOOM ──────────────────
+// The board is infinite. The view is a translate+scale transform on #world; (panX, panY) is where
+// world origin sits on screen, in pixels. Pan and zoom are per screen only (never shared in a room).
+const ZOOM_MIN = 0.1, ZOOM_MAX = 3, GRID = 28;
+let zoom = 1, panX = 0, panY = 0;
 const zoomReadout = document.getElementById('zoom-readout');
+const dotGrid = canvas.querySelector('.dot-grid');
+
+function applyView() {
+  world.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  const g = GRID * zoom;
+  dotGrid.style.backgroundSize = `${g}px ${g}px`;
+  dotGrid.style.backgroundPosition = `${panX}px ${panY}px`;
+  zoomReadout.textContent = Math.round(zoom * 100) + '%';
+}
+function setPan(x, y) { panX = x; panY = y; applyView(); }
+function panBy(dx, dy) { setPan(panX + dx, panY + dy); }
 
 // Convert a mouse position to world coordinates
 function toWorld(clientX, clientY) {
   const r = canvas.getBoundingClientRect();
-  return { x: (clientX - r.left + canvas.scrollLeft) / zoom, y: (clientY - r.top + canvas.scrollTop) / zoom };
+  return { x: (clientX - r.left - panX) / zoom, y: (clientY - r.top - panY) / zoom };
+}
+// The part of the world currently on screen, in world units
+function viewRect() {
+  return { x: -panX / zoom, y: -panY / zoom, w: canvas.clientWidth / zoom, h: canvas.clientHeight / zoom };
 }
 
 // Set zoom keeping the world point under (cx, cy) fixed on screen; defaults to the view centre.
@@ -725,14 +727,9 @@ function setZoom(z, cx, cy) {
   const r = canvas.getBoundingClientRect();
   if (cx === undefined) { cx = r.left + canvas.clientWidth / 2; cy = r.top + canvas.clientHeight / 2; }
   const mx = cx - r.left, my = cy - r.top;
-  const wx = (canvas.scrollLeft + mx) / zoom, wy = (canvas.scrollTop + my) / zoom;
+  const wx = (mx - panX) / zoom, wy = (my - panY) / zoom;
   zoom = z;
-  world.style.transform = `scale(${z})`;
-  zoomBox.style.width = WORLD_W * z + 'px';
-  zoomBox.style.height = WORLD_H * z + 'px';
-  canvas.scrollLeft = wx * z - mx;
-  canvas.scrollTop = wy * z - my;
-  zoomReadout.textContent = Math.round(z * 100) + '%';
+  setPan(mx - wx * zoom, my - wy * zoom);
 }
 
 function zoomToFit() {
@@ -744,9 +741,8 @@ function zoomToFit() {
   });
   const pad = 60;
   const z = Math.min(canvas.clientWidth / (maxX - minX + pad * 2), canvas.clientHeight / (maxY - minY + pad * 2));
-  setZoom(Math.min(1.5, z));
-  canvas.scrollLeft = ((minX + maxX) / 2) * zoom - canvas.clientWidth / 2;
-  canvas.scrollTop = ((minY + maxY) / 2) * zoom - canvas.clientHeight / 2;
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(1.5, z)));
+  setPan(canvas.clientWidth / 2 - ((minX + maxX) / 2) * zoom, canvas.clientHeight / 2 - ((minY + maxY) / 2) * zoom);
 }
 
 document.getElementById('zoom-in-btn').addEventListener('click', () => setZoom(zoom * 1.2));
@@ -754,12 +750,19 @@ document.getElementById('zoom-out-btn').addEventListener('click', () => setZoom(
 document.getElementById('zoom-fit-btn').addEventListener('click', zoomToFit);
 zoomReadout.addEventListener('click', () => setZoom(1));
 
-// ctrl/cmd + scroll wheel, or trackpad pinch (browsers report pinch as ctrl+wheel)
+// Scroll wheel / two-finger scroll pans the board in any direction.
+// ctrl/cmd + wheel, or a trackpad pinch (reported as ctrl+wheel), zooms around the cursor.
 canvas.addEventListener('wheel', e => {
-  if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
-  const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0025));
-  setZoom(zoom * Math.min(1.3, Math.max(0.77, factor)), e.clientX, e.clientY);
+  if (e.ctrlKey || e.metaKey) {
+    const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0025));
+    setZoom(zoom * Math.min(1.3, Math.max(0.77, factor)), e.clientX, e.clientY);
+    return;
+  }
+  const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? canvas.clientHeight : 1);
+  let dx = e.deltaX * unit, dy = e.deltaY * unit;
+  if (e.shiftKey && !dx) { dx = dy; dy = 0; } // shift+wheel on a mouse scrolls sideways
+  panBy(-dx, -dy);
 }, { passive: false });
 
 // Safari does not report a trackpad pinch as ctrl+wheel; it sends gesture events and
@@ -812,7 +815,7 @@ function updateDotGrid(hex) {
   const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
   const light=(r*299+g*587+b*114)/1000>128;
   canvas.classList.toggle('light-bg', light);
-  world.querySelector('.dot-grid').style.backgroundImage = light
+  dotGrid.style.backgroundImage = light
     ? 'radial-gradient(circle,rgba(0,0,0,0.12) 1px,transparent 1px)'
     : 'radial-gradient(circle,rgba(255,255,255,0.1) 1px,transparent 1px)';
 }
@@ -837,14 +840,13 @@ function selectNode(el) {
 canvas.addEventListener('mousedown', e => {
   const t = e.target;
   // Middle-click or space+drag: start panning
-  if (e.button === 1 || (spaceDown && e.button === 0)) {
+  const onBackground = !t.closest('.canvas-node');
+  if (onBackground && selected) { selected.classList.remove('selected'); selected = null; }
+  // Middle button, space+drag, or dragging empty background: pan
+  if (e.button === 1 || (e.button === 0 && (spaceDown || onBackground))) {
     e.preventDefault();
-    panDrag = { startX: e.clientX + canvas.scrollLeft, startY: e.clientY + canvas.scrollTop };
+    panDrag = { startX: e.clientX - panX, startY: e.clientY - panY };
     canvas.classList.add('panning');
-    return;
-  }
-  if (!t.closest('.canvas-node')) {
-    if (selected) { selected.classList.remove('selected'); selected = null; }
   }
 });
 
@@ -883,16 +885,15 @@ function attachDragResize(el, isText) {
 
 window.addEventListener('mousemove', e => {
   if (panDrag) {
-    canvas.scrollLeft = panDrag.startX - e.clientX;
-    canvas.scrollTop = panDrag.startY - e.clientY;
+    setPan(e.clientX - panDrag.startX, e.clientY - panDrag.startY);
     return;
   }
   if (drag) {
     const w = toWorld(e.clientX, e.clientY);
     const x = w.x - drag.offX;
     const y = w.y - drag.offY;
-    drag.el.style.left = Math.max(0, x) + 'px';
-    drag.el.style.top  = Math.max(0, y) + 'px';
+    drag.el.style.left = x + 'px';
+    drag.el.style.top  = y + 'px';
   }
   if (resize) {
     const {el,cls,startX,startY,startW,startH,startL,startT,ar,sizeReadout,isText}=resize;
@@ -934,8 +935,9 @@ window.addEventListener('keydown', e => {
 // ── IMAGE NODE ────────────────────────────
 function makeImageNode(src, filename, opts={}) {
   const W=opts.w||240, H=opts.h||180, margin=50;
-  const x = opts.x !== undefined ? opts.x : canvas.scrollLeft/zoom + margin + Math.random()*Math.max(0, canvas.clientWidth/zoom-W-margin*2);
-  const y = opts.y !== undefined ? opts.y : canvas.scrollTop/zoom  + margin + Math.random()*Math.max(0, canvas.clientHeight/zoom-H-margin*2);
+  const v = viewRect();
+  const x = opts.x !== undefined ? opts.x : v.x + margin + Math.random()*Math.max(0, v.w-W-margin*2);
+  const y = opts.y !== undefined ? opts.y : v.y + margin + Math.random()*Math.max(0, v.h-H-margin*2);
   const el = document.createElement('div');
   el.className='canvas-node img-node';
   el.dataset.id = opts.id || uid();
@@ -980,8 +982,9 @@ function restoreImageNode(item) {
 // ── TEXT NODE ─────────────────────────────
 function makeTextNode(opts={}) {
   const W=opts.w||220, margin=60;
-  const x=opts.x!==undefined?opts.x:canvas.scrollLeft/zoom + margin+Math.random()*Math.max(0,canvas.clientWidth/zoom-W-margin*2);
-  const y=opts.y!==undefined?opts.y:canvas.scrollTop/zoom  + margin+Math.random()*Math.max(0,canvas.clientHeight/zoom-120-margin*2);
+  const v=viewRect();
+  const x=opts.x!==undefined?opts.x:v.x + margin+Math.random()*Math.max(0,v.w-W-margin*2);
+  const y=opts.y!==undefined?opts.y:v.y + margin+Math.random()*Math.max(0,v.h-120-margin*2);
   const el=document.createElement('div');
   el.className='canvas-node text-node';
   el.dataset.id = opts.id || uid();
@@ -1144,7 +1147,7 @@ let localBoardsBackup = null, localActiveBackup = null;
 const Live = {
   code: null, db: null, clientId: uid(),
   roomRef: null, boardsRef: null, itemsRef: null,
-  online: 0, connected: false, pushTimers: new Map(), scrollMemo: {},
+  online: 0, connected: false, pushTimers: new Map(), panMemo: {},
   pendingBoardId: null, connCb: null,
 
   configured() { return !!window.FIREBASE_CONFIG; },
@@ -1229,7 +1232,7 @@ const Live = {
     if (this.connCb) this.db.ref('.info/connected').off('value', this.connCb);
     this.pushTimers.forEach(t => clearTimeout(t)); this.pushTimers.clear();
     this.itemsRef = this.boardsRef = this.roomRef = this.connCb = null;
-    this.code = null; this.online = 0; this.connected = false; this.scrollMemo = {};
+    this.code = null; this.online = 0; this.connected = false; this.panMemo = {};
     liveMode = false;
     if (opts.silent) return; // caller is about to join another room
 
@@ -1269,15 +1272,15 @@ const Live = {
   },
 
   enterBoard(boardId) {
-    if (activeBoardId) this.scrollMemo[activeBoardId] = { x: canvas.scrollLeft, y: canvas.scrollTop };
+    if (activeBoardId) this.panMemo[activeBoardId] = { x: panX, y: panY };
     if (this.itemsRef) this.itemsRef.off();
     this.pushTimers.forEach(t => clearTimeout(t)); this.pushTimers.clear();
     clearNodes(); updateCount();
     activeBoardId = boardId;
     const b = boards.find(x => x.id === boardId);
     if (b) applyBoardBg(b.bg);
-    const sc = this.scrollMemo[boardId] || { x: 0, y: 0 };
-    requestAnimationFrame(() => { canvas.scrollLeft = sc.x; canvas.scrollTop = sc.y; });
+    const pm = this.panMemo[boardId] || { x: 0, y: 0 };
+    setPan(pm.x, pm.y);
 
     this.itemsRef = this.roomRef.child('items/' + boardId);
     this.itemsRef.on('child_added',   s => this.onItem(s.key, s.val()));
