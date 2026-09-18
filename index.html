@@ -169,14 +169,14 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 .fmt-btn.active { background: rgba(255,77,0,0.2) !important; border-color: var(--accent) !important; color: var(--accent) !important; }
 
 /* ── MODAL ── */
-#modal-overlay, #share-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
-#modal-overlay.open, #share-overlay.open { display: flex; }
-#modal, #share-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; width: 340px; }
-#modal h3, #share-modal h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; }
-#modal input[type="text"], #share-modal input[type="text"] { width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--sans); font-size: 13px; outline: none; margin-bottom: 16px; }
-#modal input[type="text"]:focus, #share-modal input[type="text"]:focus { border-color: var(--accent); }
-#modal .modal-btns, #share-modal .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
-#modal .modal-btns button, #share-modal .modal-btns button { font-size: 12px; padding: 6px 16px; }
+#modal-overlay, #share-overlay, #room-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+#modal-overlay.open, #share-overlay.open, #room-overlay.open { display: flex; }
+#modal, #share-modal, #room-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; width: 340px; }
+#modal h3, #share-modal h3, #room-modal h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; }
+#modal input[type="text"], #share-modal input[type="text"], #room-modal input[type="text"] { width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--sans); font-size: 13px; outline: none; margin-bottom: 16px; }
+#modal input[type="text"]:focus, #share-modal input[type="text"]:focus, #room-modal input[type="text"]:focus { border-color: var(--accent); }
+#modal .modal-btns, #share-modal .modal-btns, #room-modal .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+#modal .modal-btns button, #share-modal .modal-btns button, #room-modal .modal-btns button { font-size: 12px; padding: 6px 16px; }
 
 #file-input { display: none; }
 #import-input { display: none; }
@@ -194,7 +194,7 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 #live-bar .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: livepulse 1.6s infinite; flex-shrink: 0; }
 @keyframes livepulse { 0% { box-shadow: 0 0 0 0 rgba(255,77,0,0.6); } 70% { box-shadow: 0 0 0 7px rgba(255,77,0,0); } 100% { box-shadow: 0 0 0 0 rgba(255,77,0,0); } }
 #live-bar .live-code { font-family: var(--mono); font-size: 13px; color: var(--text); letter-spacing: 0.14em; }
-#live-bar .live-link { font-family: var(--mono); font-size: 11px; color: var(--text-muted); max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#live-bar .live-link { font-family: var(--mono); font-size: 11px; color: var(--text-muted); max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #live-bar button { font-size: 11px; padding: 3px 9px; }
 #live-bar .live-status { margin-left: auto; font-family: var(--mono); font-size: 11px; }
 #live-bar .live-status.offline { color: #ff6060; }
@@ -213,6 +213,47 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 #share-modal .recent { display: flex; flex-wrap: wrap; gap: 6px; }
 #share-modal .recent button { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; }
 #share-modal a { color: var(--accent); }
+#live-bar .live-title { color: var(--text); max-width: 18vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#live-bar .live-names { color: var(--text); max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#live-bar .live-names.empty { color: var(--text-muted); font-style: italic; }
+#live-bar .live-sep { color: var(--border-hover); }
+
+/* ── ROOMS PANEL (the room list on the main page) ── */
+#stage { display: flex; flex: 1; min-height: 0; position: relative; }
+.board-actions button.active { color: var(--text); border-color: var(--border-hover); background: rgba(255,255,255,0.06); }
+#rooms-panel { display: none; flex-direction: column; width: 300px; flex-shrink: 0; min-height: 0; background: var(--surface); border-left: 1px solid var(--border); }
+#rooms-panel.on { display: flex; }
+#rooms-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+#rooms-head h2 { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); }
+#rooms-head .rooms-count { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+#rooms-head .rooms-close { margin-left: auto; font-size: 16px; line-height: 1; padding: 2px 6px; border: none; color: var(--text-muted); }
+#rooms-head .rooms-close:hover { color: var(--text); background: transparent; }
+#rooms-new { padding: 12px 14px 6px; flex-shrink: 0; }
+#rooms-new button { width: 100%; }
+#rooms-list { flex: 1; overflow-y: auto; padding: 6px 8px 14px; }
+#rooms-list::-webkit-scrollbar { width: 4px; }
+#rooms-list::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+.rooms-msg { font-size: 12px; color: var(--text-muted); line-height: 1.55; padding: 8px 8px 10px; }
+.rooms-msg code { font-family: var(--mono); font-size: 11px; color: var(--text); background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.room-card { display: block; width: 100%; text-align: left; padding: 9px 10px; margin-bottom: 4px; border-radius: 8px; border: 1px solid transparent; background: transparent; white-space: normal; }
+.room-card:hover { background: rgba(255,255,255,0.04); border-color: var(--border); }
+.room-card.here { border-color: rgba(255,77,0,0.5); background: var(--accent-dim); }
+.room-card .room-name { display: block; font-size: 13px; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.room-card .room-names { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.room-card .room-names.empty { font-style: italic; opacity: 0.75; }
+.room-card .room-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 6px; font-family: var(--mono); font-size: 10px; color: var(--text-muted); letter-spacing: 0.04em; }
+.room-card .room-code { letter-spacing: 0.12em; color: var(--text); }
+.room-card .room-online { color: var(--accent); }
+.room-card .room-online::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 5px; vertical-align: 1px; }
+@media (max-width: 720px) {
+  #rooms-panel { position: absolute; right: 0; top: 0; bottom: 0; z-index: 50; width: min(300px, 88vw); box-shadow: -8px 0 24px rgba(0,0,0,0.4); }
+}
+
+/* ── ROOM DETAILS MODAL ── */
+#room-modal { width: 380px; }
+#room-modal label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
+#room-modal p { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin: -6px 0 14px; }
+#room-modal .share-error { color: #ff6060; font-size: 12px; min-height: 16px; margin: -6px 0 8px; }
 </style>
 </head>
 <body>
@@ -222,6 +263,7 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <div id="tabs-container"></div>
   <button id="add-board-btn" title="New board">+</button>
   <div class="board-actions">
+    <button id="rooms-btn" title="Show or hide the list of live rooms">Rooms</button>
     <button id="share-btn" title="Share this board live with a class">Share</button>
     <button id="duplicate-board-btn">Duplicate</button>
     <button id="export-board-btn">Export JSON</button>
@@ -236,6 +278,10 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <span class="live-dot"></span>
   <span>Live room</span>
   <span class="live-code" id="live-code"></span>
+  <span class="live-sep">·</span>
+  <span class="live-title" id="live-title"></span>
+  <span class="live-names" id="live-names"></span>
+  <button id="live-names-btn" title="Name the room and list who is working on it">Edit</button>
   <span class="live-link" id="live-link"></span>
   <button id="live-copy-btn">Copy link</button>
   <span class="live-status" id="live-status"></span>
@@ -277,6 +323,7 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <span id="count"></span>
 </div>
 
+<div id="stage">
 <div id="canvas">
   <div class="dot-grid"></div>
   <div id="world"></div>
@@ -291,6 +338,18 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
     </div>
     <p>drop images · click + images or T+ text to begin</p>
   </div>
+</div>
+
+<!-- ROOMS PANEL: every live room in the database, most recent activity first -->
+<aside id="rooms-panel">
+  <div id="rooms-head">
+    <h2>Rooms</h2>
+    <span class="rooms-count" id="rooms-count"></span>
+    <button class="rooms-close" id="rooms-close" title="Hide the room list">×</button>
+  </div>
+  <div id="rooms-new"><button class="primary" id="rooms-new-btn">New room</button></div>
+  <div id="rooms-list"></div>
+</aside>
 </div>
 
 <input type="file" id="file-input" multiple accept="image/*">
@@ -311,6 +370,23 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
 <!-- SHARE / LIVE ROOM MODAL -->
 <div id="share-overlay">
   <div id="share-modal"></div>
+</div>
+
+<!-- ROOM DETAILS MODAL: name the room and list who is working on it -->
+<div id="room-overlay">
+  <div id="room-modal">
+    <h3 id="room-modal-title">New room</h3>
+    <p id="room-modal-help">The room goes online with a code and a link, and appears in the Rooms list for the whole class.</p>
+    <label for="room-name-input">Room name</label>
+    <input type="text" id="room-name-input" placeholder="e.g. Ruins and memory" maxlength="80" autocomplete="off">
+    <label for="room-names-input">Who is working on it</label>
+    <input type="text" id="room-names-input" placeholder="e.g. Ayşe, Bora" maxlength="120" autocomplete="off">
+    <div class="share-error" id="room-error"></div>
+    <div class="modal-btns">
+      <button id="room-cancel">Cancel</button>
+      <button class="primary" id="room-confirm">Create room</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1133,12 +1209,16 @@ canvas.addEventListener('drop',e=>{e.preventDefault();canvas.classList.remove('d
 // LIVE ROOMS  (shared boards for a class, via Firebase Realtime Database)
 // ════════════════════════════════════════════════
 // Data layout in the database:
-//   rooms/{CODE}/meta               { name, createdAt }
+//   rooms/{CODE}/meta               { name, names, createdAt }
 //   rooms/{CODE}/boards/{boardId}   { name, bg, order }
 //   rooms/{CODE}/items/{boardId}/{itemId}   one serialized node (see serializeNode)
 //   rooms/{CODE}/presence/{clientId} true   (who is connected right now)
+//   directory/{CODE}                { name, names, createdAt, updatedAt }
 // Every client edits the same tree. Writes are per item, so dragging one image
 // never re-uploads the rest of the board. Last write wins.
+// The directory is a small index of every room, one entry per room, kept apart
+// from the rooms so the Rooms panel can list them all without downloading a
+// single image. "names" is free text: the people working in that room.
 
 const ROOM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const RECENT_ROOMS_KEY = 'constellation_recent_rooms';
@@ -1149,6 +1229,7 @@ const Live = {
   roomRef: null, boardsRef: null, itemsRef: null,
   online: 0, connected: false, pushTimers: new Map(), panMemo: {},
   pendingBoardId: null, connCb: null,
+  info: { name: '', names: '' }, infoRef: null, infoCb: null, presCb: null, lastTouch: 0,
 
   configured() { return !!window.FIREBASE_CONFIG; },
   available() { return this.configured() && !!(window.firebase && firebase.database); },
@@ -1159,6 +1240,44 @@ const Live = {
   },
   roomUrl(code) { return location.origin + location.pathname + '?room=' + code; },
   normalizeCode(str) { return (str || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); },
+  now() { return firebase.database.ServerValue.TIMESTAMP; },
+  dirRef(code) { return this.db.ref('directory/' + code); },
+
+  // ── directory (what the Rooms panel lists) ──
+  // Best effort on purpose: a database whose rules predate the directory refuses
+  // these writes, and the room itself must keep working regardless.
+  async writeDirectory(code, data, replace) {
+    try { await (replace ? this.dirRef(code).set(data) : this.dirRef(code).update(data)); return true; }
+    catch(err) { console.warn('Room directory write refused. Add the "directory" block from README.md to the database rules.', err); return false; }
+  },
+  // Rooms made before the directory existed get an entry the first time someone opens them.
+  async backfillDirectory(code) {
+    if (!this.roomRef || this.code !== code) return;
+    const snap = await this.roomRef.child('meta').once('value');
+    const v = snap.val() || {};
+    if (this.code !== code) return;
+    this.info = { name: v.name || '', names: v.names || '' };
+    updateLiveUI();
+    this.writeDirectory(code, { name: v.name || 'Untitled room', names: v.names || '', createdAt: v.createdAt || this.now(), updatedAt: this.now() }, true);
+  },
+  // Rename the room or change who is listed on it. Mirrored into meta so the room carries it too.
+  async setInfo(info) {
+    if (!liveMode || !this.roomRef) return;
+    const name = cleanName(info.name, 80) || this.info.name || 'Untitled room';
+    const names = cleanName(info.names, 120);
+    this.info = { name, names };
+    updateLiveUI();
+    this.roomRef.child('meta').update({ name, names }).catch(() => {});
+    await this.writeDirectory(this.code, { name, names, updatedAt: this.now() });
+  },
+  // Bump the room's "last active" time, at most once a minute, so the list sorts by real use.
+  touch() {
+    if (!liveMode || !this.code) return;
+    const t = Date.now();
+    if (t - this.lastTouch < 60000) return;
+    this.lastTouch = t;
+    this.dirRef(this.code).update({ updatedAt: this.now() }).catch(() => {});
+  },
 
   async generateCode() {
     for (let attempt = 0; attempt < 6; attempt++) {
@@ -1169,17 +1288,21 @@ const Live = {
     throw new Error('Could not find a free room code, please try again.');
   },
 
-  // Create a new room seeded with one board, then join it.
-  async create(board) {
+  // Create a new room seeded with one board, list it in the directory, then join it.
+  async create(board, info = {}) {
     this.init();
     const code = await this.generateCode();
+    const name = cleanName(info.name, 80) || board.name || 'Untitled room';
+    const names = cleanName(info.names, 120);
     const items = {};
     (board.items || []).forEach(it => { const id = it.id || uid(); items[id] = { ...it, id }; });
     await this.db.ref('rooms/' + code).set({
-      meta: { name: board.name, createdAt: Date.now() },
+      meta: { name, names, createdAt: Date.now() },
       boards: { [board.id]: { name: board.name, bg: board.bg || '#141414', order: Date.now() } },
       items: { [board.id]: items }
     });
+    await this.writeDirectory(code, { name, names, createdAt: this.now(), updatedAt: this.now() }, true);
+    this.info = { name, names };
     await this.join(code, board.id);
     return code;
   },
@@ -1214,11 +1337,23 @@ const Live = {
       updateLiveUI();
     };
     this.db.ref('.info/connected').on('value', this.connCb);
-    this.roomRef.child('presence').on('value', s => { this.online = s.numChildren(); updateLiveUI(); });
+    // Detached by callback on leave: the Rooms panel watches the same path and must keep its listener.
+    this.presCb = this.roomRef.child('presence').on('value', s => { this.online = s.numChildren(); updateLiveUI(); });
+
+    // Room name and names come from the directory, so an edit by a partner shows up here too.
+    this.lastTouch = 0;
+    this.infoRef = this.dirRef(code);
+    this.infoCb = s => {
+      const v = s.val();
+      if (v) { this.info = { name: v.name || '', names: v.names || '' }; updateLiveUI(); }
+      else this.backfillDirectory(code);
+    };
+    this.infoRef.on('value', this.infoCb, () => { this.infoRef = null; this.infoCb = null; this.backfillDirectory(code); });
 
     history.replaceState(null, '', this.roomUrl(code));
     rememberRoom(code);
     updateLiveUI();
+    Rooms.setOpen(false);
   },
 
   leave(opts = {}) {
@@ -1226,13 +1361,15 @@ const Live = {
     if (this.itemsRef) this.itemsRef.off();
     if (this.boardsRef) this.boardsRef.off();
     if (this.roomRef) {
-      this.roomRef.child('presence').off();
+      this.roomRef.child('presence').off('value', this.presCb);
       this.roomRef.child('presence/' + this.clientId).remove();
     }
     if (this.connCb) this.db.ref('.info/connected').off('value', this.connCb);
+    if (this.infoRef) this.infoRef.off('value', this.infoCb);
     this.pushTimers.forEach(t => clearTimeout(t)); this.pushTimers.clear();
-    this.itemsRef = this.boardsRef = this.roomRef = this.connCb = null;
+    this.itemsRef = this.boardsRef = this.roomRef = this.connCb = this.infoRef = this.infoCb = this.presCb = null;
     this.code = null; this.online = 0; this.connected = false; this.panMemo = {};
+    this.info = { name: '', names: '' }; this.lastTouch = 0;
     liveMode = false;
     if (opts.silent) return; // caller is about to join another room
 
@@ -1243,6 +1380,7 @@ const Live = {
     renderTabs();
     history.replaceState(null, '', location.pathname);
     updateLiveUI();
+    Rooms.setOpen(Rooms.prefOpen());
   },
 
   // ── boards list ──
@@ -1320,6 +1458,7 @@ const Live = {
   // ── outgoing item changes ──
   pushItem(el, isNew) {
     if (!this.itemsRef) return;
+    this.touch();
     const id = el.dataset.id;
     if (isNew) el._needsFullPush = true;
     const ref = this.itemsRef; // bind to the board that was active when the edit happened
@@ -1337,20 +1476,22 @@ const Live = {
   removeItem(id) {
     clearTimeout(this.pushTimers.get(id)); this.pushTimers.delete(id);
     if (this.itemsRef) this.itemsRef.child(id).remove();
+    this.touch();
   },
-  clearItems() { if (this.itemsRef) this.itemsRef.set(null); },
+  clearItems() { if (this.itemsRef) this.itemsRef.set(null); this.touch(); },
 
   // ── board operations ──
   addBoard() {
     const id = uid();
     this.boardsRef.child(id).set({ name: `Board ${boards.length + 1}`, bg: '#141414', order: Date.now() });
     this.enterBoard(id);
+    this.touch();
   },
   deleteBoard(id) {
     this.boardsRef.child(id).remove();
     this.roomRef.child('items/' + id).remove();
   },
-  renameBoard(id, name) { this.boardsRef.child(id).update({ name }); },
+  renameBoard(id, name) { this.boardsRef.child(id).update({ name }); this.touch(); },
   setBg(id, bg) { this.boardsRef.child(id).update({ bg }); },
   duplicateBoard() {
     const src = boards.find(b => b.id === activeBoardId);
@@ -1393,6 +1534,16 @@ function rememberRoom(code) {
   } catch(e) {}
 }
 function recentRooms() { try { return JSON.parse(localStorage.getItem(RECENT_ROOMS_KEY) || '[]'); } catch(e) { return []; } }
+function cleanName(str, max) { return String(str || '').replace(/\s+/g, ' ').trim().slice(0, max); }
+function timeAgo(ts) {
+  if (!ts) return 'new';
+  const sec = Math.max(0, (Date.now() - ts) / 1000);
+  if (sec < 60) return 'just now';
+  const min = sec / 60; if (min < 60) return Math.round(min) + ' min ago';
+  const hr = min / 60; if (hr < 24) return Math.round(hr) + ' h ago';
+  const day = hr / 24; if (day < 7) return Math.round(day) + ' d ago';
+  return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
 
 function copyText(text, btn) {
   const done = () => { if (btn) { const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = t, 1200); } };
@@ -1409,6 +1560,10 @@ function updateLiveUI() {
   shareBtn.textContent = liveMode ? 'Live · ' + Live.code : 'Share';
   if (!liveMode) return;
   document.getElementById('live-code').textContent = Live.code;
+  document.getElementById('live-title').textContent = Live.info.name || '';
+  const nm = document.getElementById('live-names');
+  nm.textContent = Live.info.names || 'no names yet';
+  nm.classList.toggle('empty', !Live.info.names);
   document.getElementById('live-link').textContent = Live.roomUrl(Live.code);
   const st = document.getElementById('live-status');
   if (Live.connected) { st.textContent = Live.online + ' online'; st.classList.remove('offline'); }
@@ -1416,6 +1571,7 @@ function updateLiveUI() {
 }
 document.getElementById('live-copy-btn').addEventListener('click', e => copyText(Live.roomUrl(Live.code), e.target));
 document.getElementById('live-leave-btn').addEventListener('click', () => Live.leave());
+document.getElementById('live-names-btn').addEventListener('click', () => openRoomForm('edit'));
 
 // ── share modal ──
 const shareOverlay = document.getElementById('share-overlay');
@@ -1458,7 +1614,7 @@ function renderShareModal() {
     <h3>Share with a class</h3>
     <div class="share-section first">
       <h4>Start a live room from “${esc(cur ? cur.name : 'this board')}”</h4>
-      <p>You get a short code and a link. Anyone who opens the link sees the board and can add, move, and edit alongside everyone else, in real time. The room stays saved online for next lesson.</p>
+      <p>You get a short code and a link. Anyone who opens the link sees the board and can add, move, and edit alongside everyone else, in real time. The room stays saved online for next lesson, and is listed under Rooms with the names you give it.</p>
       <button class="primary" id="share-create">Create room</button>
     </div>
     <div class="share-section">
@@ -1499,18 +1655,7 @@ function renderShareModal() {
   if ($('share-copy-code')) $('share-copy-code').addEventListener('click', e => copyText(Live.code, e.target));
 
   const createBtn = $('share-create');
-  if (createBtn) {
-    createBtn.dataset.label = createBtn.textContent;
-    createBtn.addEventListener('click', async () => {
-      busy(createBtn, true);
-      try {
-        captureBoard(activeBoardId);
-        const board = JSON.parse(JSON.stringify(boards.find(b => b.id === activeBoardId)));
-        await Live.create(board);
-        renderShareModal();
-      } catch(err) { console.error(err); showErr(friendlyError(err)); busy(createBtn, false); }
-    });
-  }
+  if (createBtn) createBtn.addEventListener('click', () => { closeShareModal(); openRoomForm('create'); });
   const joinBtn = $('share-join'), codeInp = $('share-code');
   const doJoin = async code => {
     busy(joinBtn, true);
@@ -1533,6 +1678,170 @@ function friendlyError(err) {
 }
 
 // ════════════════════════════════════════════════
+// ROOM DETAILS FORM  (new room, or rename the current one and say who is on it)
+// ════════════════════════════════════════════════
+const roomOverlay = document.getElementById('room-overlay');
+let roomFormMode = 'create';
+
+function openRoomForm(mode) {
+  roomFormMode = mode;
+  const nameInp = document.getElementById('room-name-input');
+  const namesInp = document.getElementById('room-names-input');
+  const editing = mode === 'edit';
+  document.getElementById('room-modal-title').textContent = editing ? 'Room details' : 'New room';
+  document.getElementById('room-modal-help').textContent = editing
+    ? 'Everyone in the room and the Rooms list see the change straight away.'
+    : (liveMode ? 'Starts a fresh, empty room with a new code and link. You leave this one; it stays online.'
+                : 'The board on screen goes online with a code and a link, and appears in the Rooms list for the whole class.');
+  document.getElementById('room-confirm').textContent = editing ? 'Save' : 'Create room';
+  nameInp.value = editing ? Live.info.name : '';
+  namesInp.value = editing ? Live.info.names : '';
+  document.getElementById('room-error').textContent = '';
+  roomOverlay.classList.add('open');
+  setTimeout(() => { nameInp.focus(); if (editing) nameInp.select(); }, 50);
+}
+function closeRoomForm() { roomOverlay.classList.remove('open'); }
+
+async function submitRoomForm() {
+  const btn = document.getElementById('room-confirm');
+  const errEl = document.getElementById('room-error');
+  const nameInp = document.getElementById('room-name-input');
+  const names = cleanName(document.getElementById('room-names-input').value, 120);
+  const name = cleanName(nameInp.value, 80) || names; // a room named after its people is fine
+  if (!name) { errEl.textContent = 'Give the room a name, or say who is working on it.'; nameInp.focus(); return; }
+  if (!Live.available()) { errEl.textContent = Live.configured() ? 'The Firebase library did not load. Check the connection and reload.' : 'Live rooms are not set up yet (see Share).'; return; }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Please wait…';
+  try {
+    if (roomFormMode === 'edit') await Live.setInfo({ name, names });
+    else {
+      let board;
+      if (liveMode) board = defaultBoard(name); // from inside a room: start clean rather than copy someone else's board
+      else {
+        captureBoard(activeBoardId);
+        board = JSON.parse(JSON.stringify(boards.find(b => b.id === activeBoardId)));
+        if (!(board.items || []).length && /^Board \d+$/.test(board.name)) board.name = name; // an untouched default board takes the room's name
+      }
+      await Live.create(board, { name, names });
+    }
+    closeRoomForm();
+  } catch(err) { console.error(err); errEl.textContent = friendlyError(err); }
+  btn.disabled = false; btn.textContent = label;
+}
+document.getElementById('room-confirm').addEventListener('click', submitRoomForm);
+document.getElementById('room-cancel').addEventListener('click', closeRoomForm);
+roomOverlay.addEventListener('click', e => { if (e.target === roomOverlay) closeRoomForm(); });
+['room-name-input', 'room-names-input'].forEach(id => document.getElementById(id).addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitRoomForm();
+  if (e.key === 'Escape') closeRoomForm();
+}));
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && roomOverlay.classList.contains('open')) closeRoomForm(); });
+
+// ════════════════════════════════════════════════
+// ROOMS PANEL  (every live room, from the directory; open by default on the main page)
+// ════════════════════════════════════════════════
+const ROOMS_PREF_KEY = 'constellation_rooms_panel';
+const roomsPanel = document.getElementById('rooms-panel');
+const roomsList = document.getElementById('rooms-list');
+const roomsCountEl = document.getElementById('rooms-count');
+const roomsBtn = document.getElementById('rooms-btn');
+
+const Rooms = {
+  open: false, ref: null, cb: null, list: [], presence: new Map(), state: 'idle', error: '', renderTimer: null,
+
+  prefOpen() { try { return localStorage.getItem(ROOMS_PREF_KEY) !== 'closed'; } catch(e) { return true; } },
+  savePref(open) { try { localStorage.setItem(ROOMS_PREF_KEY, open ? 'open' : 'closed'); } catch(e) {} },
+
+  // remember=true records the choice for the main page; joining a room hides the panel without recording anything.
+  setOpen(open, remember) {
+    this.open = open;
+    if (remember) this.savePref(open);
+    roomsPanel.classList.toggle('on', open);
+    roomsBtn.classList.toggle('active', open);
+    if (open) this.watch(); else this.unwatch();
+    this.render();
+  },
+
+  watch() {
+    if (this.ref || !Live.available()) { this.render(); return; }
+    Live.init();
+    this.state = 'loading'; this.error = '';
+    this.ref = Live.db.ref('directory');
+    this.cb = s => {
+      const list = [];
+      s.forEach(c => {
+        const v = c.val() || {};
+        list.push({ code: c.key, name: v.name || 'Untitled room', names: v.names || '', updatedAt: v.updatedAt || v.createdAt || 0 });
+      });
+      list.sort((a, b) => b.updatedAt - a.updatedAt);
+      this.list = list; this.state = 'ok';
+      this.syncPresence();
+      this.render();
+    };
+    this.ref.on('value', this.cb, err => {
+      this.state = 'error'; this.error = (err && err.message) || String(err);
+      this.ref = null; this.cb = null;
+      this.render();
+    });
+  },
+  unwatch() {
+    if (this.ref) this.ref.off('value', this.cb);
+    this.ref = null; this.cb = null;
+    this.presence.forEach(p => p.ref.off('value', p.cb)); this.presence.clear();
+    this.state = 'idle'; this.list = [];
+  },
+
+  // One small listener per listed room so the list shows who is in a room right now.
+  syncPresence() {
+    const want = new Set(this.list.slice(0, 80).map(r => r.code));
+    this.presence.forEach((p, code) => { if (!want.has(code)) { p.ref.off('value', p.cb); this.presence.delete(code); } });
+    want.forEach(code => {
+      if (this.presence.has(code)) return;
+      const p = { ref: Live.db.ref('rooms/' + code + '/presence'), cb: null, n: 0 };
+      p.cb = s => { p.n = s.numChildren(); this.renderSoon(); };
+      p.ref.on('value', p.cb, () => {});
+      this.presence.set(code, p);
+    });
+  },
+  renderSoon() { clearTimeout(this.renderTimer); this.renderTimer = setTimeout(() => this.render(), 80); },
+
+  render() {
+    if (!this.open) return;
+    roomsCountEl.textContent = this.state === 'ok' && this.list.length ? String(this.list.length) : '';
+    let html;
+    if (!Live.configured()) html = `<p class="rooms-msg">Live rooms are not set up yet. Click <b>Share</b> for the one-time setup.</p>`;
+    else if (!Live.available()) html = `<p class="rooms-msg">The Firebase library did not load, so rooms cannot be listed. Check the connection, or whether the network blocks <code>gstatic.com</code>, then reload.</p>`;
+    else if (this.state === 'loading') html = `<p class="rooms-msg">Loading rooms…</p>`;
+    else if (this.state === 'error') html = /permission/i.test(this.error)
+      ? `<p class="rooms-msg">The room list needs one more database rule. In the Firebase console, add the <code>directory</code> block from the README to the Realtime Database rules and publish. Rooms keep working meanwhile: join with a code or a link.</p>`
+      : `<p class="rooms-msg">Could not load the room list: ${esc(this.error)}</p>`;
+    else if (!this.list.length) html = `<p class="rooms-msg">No rooms yet. Make one with <b>New room</b>, name it, and list who is working on it.</p>`;
+    else html = this.list.map(r => this.card(r)).join('');
+    roomsList.innerHTML = html;
+    roomsList.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => this.openRoom(b.dataset.open)));
+  },
+  card(r) {
+    const here = liveMode && Live.code === r.code;
+    const p = this.presence.get(r.code);
+    const online = p ? p.n : 0;
+    return `<button class="room-card${here ? ' here' : ''}" data-open="${esc(r.code)}" title="${here ? 'You are in this room' : 'Open this room'}">
+      <span class="room-name">${esc(r.name)}</span>
+      <span class="room-names${r.names ? '' : ' empty'}">${r.names ? esc(r.names) : 'no names yet'}</span>
+      <span class="room-meta"><span class="room-code">${esc(r.code)}</span><span>${here ? 'you are here' : esc(timeAgo(r.updatedAt))}</span>${online ? `<span class="room-online">${online} online</span>` : ''}</span>
+    </button>`;
+  },
+  async openRoom(code) {
+    if (liveMode && Live.code === code) { this.setOpen(false); return; }
+    try { await Live.join(code); }
+    catch(err) { console.error(err); alert(friendlyError(err)); }
+  }
+};
+roomsBtn.addEventListener('click', () => Rooms.setOpen(!Rooms.open, !liveMode));
+document.getElementById('rooms-close').addEventListener('click', () => Rooms.setOpen(false, !liveMode));
+document.getElementById('rooms-new-btn').addEventListener('click', () => openRoomForm('create'));
+setInterval(() => { if (Rooms.open && Rooms.state === 'ok') Rooms.render(); }, 60000); // keep "5 min ago" honest
+
+// ════════════════════════════════════════════════
 // BOOT
 // ════════════════════════════════════════════════
 loadFromStorage();
@@ -1540,6 +1849,7 @@ activeBoardId = boards[0].id;
 restoreBoard(boards[0]);
 renderTabs();
 updateLiveUI();
+Rooms.setOpen(Rooms.prefOpen());
 
 // Opened from a share link? Join straight away.
 (function autoJoin() {
