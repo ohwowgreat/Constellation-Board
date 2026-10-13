@@ -30,11 +30,17 @@ const seed = {
     const page = await context.newPage(), errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base);
+    assert.equal(await page.evaluate(async () => {
+      Live.init(); let initial;
+      await Live.db.ref('rooms/ROOMAA').transaction(current => { initial = current; });
+      return initial;
+    }), null, 'models an existing room with a cold transaction cache');
     await page.getByRole('button', { name: 'Library', exact: true }).click();
     await page.waitForFunction(() => Library.complete() && Library.entries.size === 3);
     await page.locator('.library-image').nth(2).waitFor();
     assert.equal(await page.locator('.library-image').count(), 3, 'deduplicates images across rooms');
     assert.equal(await page.evaluate(() => __firebaseData().rooms.ROOMAA.meta.libraryVersion), 1, 'backfills legacy rooms');
+    assert.equal(await page.evaluate(() => ImageCatalog.migrations.size), 0, 'backfill releases its temporary state');
     assert.equal(await page.evaluate(() => document.querySelector('.library-image-title img') !== null), false, 'labels are rendered as text');
     const hashA = await page.evaluate(src => ImageCatalog.hash(src), sourceA);
     const hashB = await page.evaluate(src => ImageCatalog.hash(src), sourceB);

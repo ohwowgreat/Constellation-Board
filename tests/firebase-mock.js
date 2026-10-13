@@ -77,7 +77,11 @@
     remove() { return this.set(null); }
     onDisconnect() { return { remove: () => Promise.resolve() }; }
     async transaction(callback) {
-      let result = callback(clone(get(this.path)));
+      // RTDB drops the local snapshot after one-time reads. Transactions at an
+      // unwatched location may first receive null, even for an existing room.
+      const pinned = listeners.some(listener => listener.event === 'value' && listener.path === this.path);
+      let result = callback(pinned ? clone(get(this.path)) : null);
+      if (result === undefined) return { committed: false, snapshot: new Snapshot(this.path) };
       if (window.__firebaseBeforeTransaction) {
         const change = window.__firebaseBeforeTransaction; window.__firebaseBeforeTransaction = null; change();
         result = callback(clone(get(this.path)));

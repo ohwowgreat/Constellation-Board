@@ -71,20 +71,28 @@ const ImageCatalog = {
   async migrate(ref) {
     // Reading the marker first avoids fetching pixels from already indexed rooms.
     if ((await ref.child('meta/libraryVersion').once('value')).val() === 1) return;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const room = (await ref.once('value')).val();
-      if (!room || room.meta?.libraryVersion === 1) return;
-      const signature = JSON.stringify(room.items || {});
-      const indexed = await this.indexBoards(room.items);
-      // A transaction prevents backfill from restoring an entry removed while
-      // thumbnails were being generated, or overwriting concurrent room edits.
-      const result = await ref.transaction(current => {
-        if (!current || current.meta?.libraryVersion === 1 || JSON.stringify(current.items || {}) !== signature) return;
-        return { ...current, imageLibrary: indexed, meta: { ...(current.meta || {}), libraryVersion: 1 } };
-      }, undefined, false);
-      if (result.committed) return;
+    // A one-time read does not keep RTDB's local cache alive. Without an active
+    // listener, the first transaction callback can see null and abort locally,
+    // even though the room exists. Pin the snapshot only during this backfill.
+    const keepSnapshot = () => {};
+    ref.on('value', keepSnapshot, () => {});
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const room = (await ref.once('value')).val();
+        if (!room || room.meta?.libraryVersion === 1) return;
+        const signature = JSON.stringify(room.items || {});
+        const indexed = await this.indexBoards(room.items);
+        // Preserve concurrent edits and never resurrect a removed image.
+        const result = await ref.transaction(current => {
+          if (!current || current.meta?.libraryVersion === 1 || JSON.stringify(current.items || {}) !== signature) return;
+          return { ...current, imageLibrary: indexed, meta: { ...(current.meta || {}), libraryVersion: 1 } };
+        }, undefined, false);
+        if (result.committed) return;
+      }
+      if ((await ref.child('meta/libraryVersion').once('value')).val() !== 1) throw new Error('This room is changing. Refresh to finish loading its images.');
+    } finally {
+      ref.off('value', keepSnapshot);
     }
-    if ((await ref.child('meta/libraryVersion').once('value')).val() !== 1) throw new Error('This room is changing. Refresh to finish loading its images.');
   }
 };
 
@@ -262,8 +270,8 @@ const Library = {
     if (!visible.length) {
       const empty = document.createElement('div'); empty.className = 'library-empty';
       const title = document.createElement('h3'), copy = document.createElement('p');
-      title.textContent = pending || this.directoryLoading ? 'Gathering room images…' : this.entries.size ? 'No matching images' : 'No room images yet';
-      copy.textContent = pending ? 'Older rooms may take a moment to load the first time.' : this.entries.size ? 'Try another room, board, or search.' : 'Add images to a shared room board. They will appear here while they remain on a room board.';
+      title.textContent = pending || this.directoryLoading ? 'Gathering room images…' : failures.length || this.directoryError ? 'Room images could not load' : this.entries.size ? 'No matching images' : 'No room images yet';
+      copy.textContent = pending ? 'Older rooms may take a moment to load the first time.' : failures.length || this.directoryError ? 'Use Refresh to try again. Your images remain on their room boards.' : this.entries.size ? 'Try another room, board, or search.' : 'Add images to a shared room board. They will appear here while they remain on a room board.';
       empty.append(title, copy); grid.appendChild(empty);
     }
     this.$('library-gallery').replaceChildren(grid); this.renderSelection();
