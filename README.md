@@ -116,3 +116,26 @@ Notes:
 - Export JSON and Export PDF work in a room exactly as they do on private boards.
 - Images are shrunk to at most 1600 px on their longest side when added, so a class full of photos stays fast. The free Firebase plan allows 1 GB of storage and 10 GB of downloads per month, which is plenty for classroom use.
 - If two people edit the same text box at the same moment, the last edit wins.
+
+## Image library and master boards
+
+Click **Library** beside **Rooms** to browse images currently used on shared room boards. Search by image label, room name, or board name, and filter by room or board. Click a thumbnail to preview the full image; use its checkbox to select it. Selections stay checked when you change filters.
+
+Identical image sources appear once, with every room and board where they are used listed underneath. Renaming an image on a source board updates its searchable label. Removing an image, clearing a board, or deleting a board removes that usage from the library. When no shared board uses an image, it disappears. Private boards saved on your device are not included.
+
+To combine images from different rooms:
+
+1. Select images in the library, then click **Create master board**.
+2. Give the board and room a name, and optionally list who is working on it.
+3. Click **Create shared room**. The selected images are copied into a starting grid on a new board, in a new live room with its own code and link.
+4. Arrange the images with the usual canvas tools. Share the room link for collaboration, or export PDF or JSON as usual.
+
+Master-board images are independent copies. Editing or removing them does not change the source boards. If an image is removed from its original room but remains on a master board, it remains in the library, listed under the master room.
+
+The first time an older room is opened or loaded in the library, the app creates its thumbnail index. This can take a moment for large rooms. Future library visits load the small index and fetch full images only for previews and master-board creation. **Refresh** retries rooms that failed to load. Older rooms missing from the Rooms directory appear after someone rejoins them with their code or link. Images removed before indexing cannot be recovered.
+
+The index is stored at `rooms/{CODE}/imageLibrary/{boardId}/{itemId}`, with a SHA-256 source identifier, thumbnail, intrinsic dimensions, and label; `meta/libraryVersion` records completed backfill. It uses the existing room rules above, with no new Firebase service or rules required. New image writes and index updates are atomic, as are removals, board clearing, imports, and duplicates. Backfill uses a transaction so concurrent edits are preserved. Reload browser tabs running an older version of the app before editing: older clients do not maintain this index. Deduplication compares exact image sources, so separately compressed or edited versions can appear as separate images.
+
+### Development checks
+
+Serve the project locally with `python -m http.server 8765 --bind 127.0.0.1`, then run `node tests/image-library.spec.cjs` in another terminal. The tests require Playwright and Chromium in your Node environment; set `CHROMIUM_PATH` if Chromium is not at `/usr/bin/chromium`, or `TEST_BASE_URL` for another server address. Firebase requests are replaced with an isolated, persistent database simulation; the tests do not touch classroom rooms. Set `CAPTURE_REVIEW=1` to save desktop/mobile screenshots in `/tmp/constellation-review`.

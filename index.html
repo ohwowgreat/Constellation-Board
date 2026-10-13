@@ -11,6 +11,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="image-library.js"></script>
+<link rel="stylesheet" href="image-library.css">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -264,6 +266,7 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <button id="add-board-btn" title="New board">+</button>
   <div class="board-actions">
     <button id="rooms-btn" title="Show or hide the list of live rooms">Rooms</button>
+    <button id="library-btn" aria-controls="image-library" aria-expanded="false">Library</button>
     <button id="share-btn" title="Share this board live with a class">Share</button>
     <button id="duplicate-board-btn">Duplicate</button>
     <button id="export-board-btn">Export JSON</button>
@@ -350,7 +353,45 @@ button.danger:hover { border-color: rgba(255,80,80,0.5); color: #ff6060; }
   <div id="rooms-new"><button class="primary" id="rooms-new-btn">New room</button></div>
   <div id="rooms-list"></div>
 </aside>
+<section id="image-library" aria-labelledby="library-title" hidden>
+  <header class="library-head">
+    <div><h2 id="library-title">Image library</h2><p>Gather images from room boards into a shared master board.</p></div>
+    <button id="library-close">Back to board</button>
+  </header>
+  <div class="library-filters">
+    <label class="library-search">Search images<input id="library-search" type="search" placeholder="Image label or room name" autocomplete="off"></label>
+    <label>Room<select id="library-room"><option value="">All rooms</option></select></label>
+    <label>Board<select id="library-board"><option value="">All boards</option></select></label>
+    <button id="library-refresh">Refresh</button>
+  </div>
+  <p id="library-status" role="status" aria-live="polite"></p>
+  <div id="library-gallery" aria-busy="false"></div>
+  <footer class="library-footer">
+    <span id="library-selected" role="status" aria-live="polite">0 selected</span>
+    <button id="library-clear" disabled>Clear selection</button>
+    <button class="primary" id="library-create" disabled>Create master board</button>
+  </footer>
+</section>
 </div>
+
+<dialog id="library-preview" class="library-dialog" aria-labelledby="library-preview-title">
+  <div class="library-dialog-head"><h2 id="library-preview-title">Image preview</h2><button id="library-preview-close">Close</button></div>
+  <p id="library-preview-status" role="status"></p>
+  <img id="library-preview-image" alt="" hidden>
+  <p id="library-preview-sources"></p>
+</dialog>
+<dialog id="library-master" class="library-dialog" aria-labelledby="library-master-title">
+  <form id="library-master-form">
+    <h2 id="library-master-title">Create a master board</h2>
+    <p id="library-master-help">Selected images will be copied into a new shared room.</p>
+    <label for="library-master-name">Board and room name</label>
+    <input id="library-master-name" maxlength="80" required placeholder="e.g. Memory and place" autocomplete="off">
+    <label for="library-master-names">Who is working on it <span>(optional)</span></label>
+    <input id="library-master-names" maxlength="120" autocomplete="off">
+    <p id="library-master-error" role="alert"></p>
+    <div class="library-dialog-actions"><button type="button" id="library-master-cancel">Cancel</button><button type="submit" class="primary" id="library-master-submit">Create shared room</button></div>
+  </form>
+</dialog>
 
 <input type="file" id="file-input" multiple accept="image/*">
 <input type="file" id="import-input" accept=".json">
@@ -849,6 +890,7 @@ canvas.addEventListener('gesturechange', e => { e.preventDefault(); setZoom(gest
 canvas.addEventListener('gestureend', e => e.preventDefault());
 
 window.addEventListener('keydown', e => {
+  if (Library.open || document.querySelector('.library-dialog[open]')) return;
   if (!(e.ctrlKey || e.metaKey)) return;
   const a = document.activeElement;
   if (a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'SELECT')) return;
@@ -928,6 +970,7 @@ canvas.addEventListener('mousedown', e => {
 
 // Space key for pan mode
 window.addEventListener('keydown', e => {
+  if (Library.open || document.querySelector('.library-dialog[open]')) return;
   if (e.code === 'Space' && !e.target.isContentEditable && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
     spaceDown = true;
     canvas.classList.add('pan-ready');
@@ -997,6 +1040,7 @@ window.addEventListener('mouseup', () => {
 canvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
 
 window.addEventListener('keydown', e => {
+  if (Library.open || document.querySelector('.library-dialog[open]')) return;
   if (e.code === 'Space') return; // handled above
   if ((e.key==='Delete'||e.key==='Backspace') && selected) {
     const a=document.activeElement;
@@ -1027,12 +1071,14 @@ function makeImageNode(src, filename, opts={}) {
       <div class="sep"></div><button class="del-btn">remove</button>
     </div>
     <div class="img-inner">
-      <div class="img-frame"><img src="${src}" draggable="false"></div>
+      <div class="img-frame"><img draggable="false"></div>
       <div class="resize-handle tl"></div><div class="resize-handle tr"></div>
       <div class="resize-handle bl"></div><div class="resize-handle br"></div>
     </div>
-    <div class="img-label" contenteditable="false" spellcheck="false">${label}</div>`;
+    <div class="img-label" contenteditable="false" spellcheck="false"></div>`;
   const img=el.querySelector('img');
+  img.src = ImageCatalog.safeSource(src) ? src : '';
+  el.querySelector('.img-label').textContent = label;
   img.addEventListener('load',()=>{el._ar=img.naturalHeight/img.naturalWidth;});
   if(opts.flipped) el.querySelector('.img-frame').style.transform='scaleX(-1)';
   const labelEl=el.querySelector('.img-label');
@@ -1289,21 +1335,21 @@ const Live = {
   },
 
   // Create a new room seeded with one board, list it in the directory, then join it.
-  async create(board, info = {}) {
+  async create(board, info = {}, joinRoom = true) {
     this.init();
     const code = await this.generateCode();
     const name = cleanName(info.name, 80) || board.name || 'Untitled room';
     const names = cleanName(info.names, 120);
     const items = {};
     (board.items || []).forEach(it => { const id = it.id || uid(); items[id] = { ...it, id }; });
+    const imageLibrary = await ImageCatalog.indexBoards({ [board.id]: items });
     await this.db.ref('rooms/' + code).set({
-      meta: { name, names, createdAt: Date.now() },
+      meta: { name, names, createdAt: Date.now(), libraryVersion: 1 },
       boards: { [board.id]: { name: board.name, bg: board.bg || '#141414', order: Date.now() } },
-      items: { [board.id]: items }
+      items: { [board.id]: items }, imageLibrary
     });
     await this.writeDirectory(code, { name, names, createdAt: this.now(), updatedAt: this.now() }, true);
-    this.info = { name, names };
-    await this.join(code, board.id);
+    if (joinRoom) { this.info = { name, names }; await this.join(code, board.id); }
     return code;
   },
 
@@ -1354,6 +1400,7 @@ const Live = {
     rememberRoom(code);
     updateLiveUI();
     Rooms.setOpen(false);
+    ImageCatalog.ensureRoom(this.db.ref('rooms/' + code)).catch(err => console.warn('Image library indexing failed', err));
   },
 
   leave(opts = {}) {
@@ -1432,7 +1479,7 @@ const Live = {
     if (!item || !item.type) return;
     item = { ...item, id };
     const el = nodeById(id);
-    if (!el) { restoreItem(item); return; }
+    if (!el) { restoreItem(item); Library.fitCreatedBoard(); return; }
     if ((drag && drag.el === el) || (resize && resize.el === el)) return; // we are moving it right now
     const cur = serializeNode(el);
     const GEOM = ['x', 'y', 'w', 'h', 'z'];
@@ -1463,22 +1510,40 @@ const Live = {
     if (isNew) el._needsFullPush = true;
     const ref = this.itemsRef; // bind to the board that was active when the edit happened
     clearTimeout(this.pushTimers.get(id));
-    this.pushTimers.set(id, setTimeout(() => {
+    this.pushTimers.set(id, setTimeout(async () => {
       this.pushTimers.delete(id);
       if (!nodes.includes(el)) return;
       const item = serializeNode(el);
       if (!item) return;
-      if (el._needsFullPush) { el._needsFullPush = false; ref.child(id).set(item); return; }
-      if (item.type === 'image') delete item.src; // never re-upload pixels for a move
-      ref.child(id).update(item);
+      const revision = el._libraryRevision = (el._libraryRevision || 0) + 1;
+      try {
+        const record = item.type === 'image' ? await ImageCatalog.record(item) : null;
+        // A deletion, clear, or newer edit may have happened while the thumbnail loaded.
+        if (revision !== el._libraryRevision || !nodes.includes(el) || ref !== this.itemsRef) return;
+        const updates = {};
+        const recordKey = record ? record.hash + '/' + record.label : '';
+        if (el._catalogRecordKey !== recordKey) updates['imageLibrary/' + activeBoardId + '/' + id] = record;
+        if (el._needsFullPush) updates['items/' + activeBoardId + '/' + id] = item;
+        else {
+          if (item.type === 'image') delete item.src; // geometry edits never re-upload pixels
+          Object.entries(item).forEach(([key, value]) => { updates['items/' + activeBoardId + '/' + id + '/' + key] = value; });
+        }
+        await this.roomRef.update(updates);
+        el._catalogRecordKey = recordKey;
+        el._needsFullPush = false;
+      } catch(err) { console.error('Could not save room item', err); }
     }, 60));
   },
   removeItem(id) {
     clearTimeout(this.pushTimers.get(id)); this.pushTimers.delete(id);
-    if (this.itemsRef) this.itemsRef.child(id).remove();
+    if (this.itemsRef) this.roomRef.update({ ['items/' + activeBoardId + '/' + id]: null, ['imageLibrary/' + activeBoardId + '/' + id]: null });
     this.touch();
   },
-  clearItems() { if (this.itemsRef) this.itemsRef.set(null); this.touch(); },
+  clearItems() {
+    this.pushTimers.forEach(t => clearTimeout(t)); this.pushTimers.clear();
+    if (this.itemsRef) this.roomRef.update({ ['items/' + activeBoardId]: null, ['imageLibrary/' + activeBoardId]: null });
+    this.touch();
+  },
 
   // ── board operations ──
   addBoard() {
@@ -1488,32 +1553,41 @@ const Live = {
     this.touch();
   },
   deleteBoard(id) {
-    this.boardsRef.child(id).remove();
-    this.roomRef.child('items/' + id).remove();
+    this.roomRef.update({ ['boards/' + id]: null, ['items/' + id]: null, ['imageLibrary/' + id]: null });
   },
   renameBoard(id, name) { this.boardsRef.child(id).update({ name }); this.touch(); },
   setBg(id, bg) { this.boardsRef.child(id).update({ bg }); },
-  duplicateBoard() {
+  async duplicateBoard() {
     const src = boards.find(b => b.id === activeBoardId);
     if (!src) return;
     const newId = uid();
     const items = {};
     serializeNodes().forEach(it => { const nid = uid(); items[nid] = { ...it, id: nid }; });
-    this.roomRef.child('items/' + newId).set(items);
-    this.boardsRef.child(newId).set({ name: src.name + ' copy', bg: src.bg || '#141414', order: Date.now() });
-    this.enterBoard(newId);
+    const roomRef = this.roomRef;
+    try {
+      const indexed = await ImageCatalog.indexBoards({ [newId]: items });
+      await roomRef.update({ ['items/' + newId]: items, ['imageLibrary/' + newId]: indexed[newId] || null, ['boards/' + newId]: { name: src.name + ' copy', bg: src.bg || '#141414', order: Date.now() } });
+      if (roomRef === this.roomRef) this.enterBoard(newId);
+    } catch(err) { alert('Could not duplicate the board. ' + friendlyError(err)); }
   },
-  importBoards(list) {
+  async importBoards(list) {
     let last = null, order = Date.now();
+    const updates = {}, importedItems = {}, roomRef = this.roomRef;
     list.forEach(b => {
       const newId = uid();
       const items = {};
       (b.items || []).forEach(it => { const nid = uid(); items[nid] = { ...it, id: nid }; });
-      this.roomRef.child('items/' + newId).set(items);
-      this.boardsRef.child(newId).set({ name: b.name || 'Imported', bg: b.bg || '#141414', order: order++ });
+      importedItems[newId] = items;
+      updates['items/' + newId] = items;
+      updates['boards/' + newId] = { name: b.name || 'Imported', bg: b.bg || '#141414', order: order++ };
       last = newId;
     });
-    if (last) this.enterBoard(last);
+    try {
+      const indexed = await ImageCatalog.indexBoards(importedItems);
+      Object.keys(importedItems).forEach(id => { updates['imageLibrary/' + id] = indexed[id] || null; });
+      await roomRef.update(updates);
+      if (last && roomRef === this.roomRef) this.enterBoard(last);
+    } catch(err) { alert('Could not import the boards. ' + friendlyError(err)); }
   },
   // For "Export All": load every board's items, not just the one on screen.
   async fillAllBoardItems() {
@@ -1836,7 +1910,10 @@ const Rooms = {
     catch(err) { console.error(err); alert(friendlyError(err)); }
   }
 };
-roomsBtn.addEventListener('click', () => Rooms.setOpen(!Rooms.open, !liveMode));
+roomsBtn.addEventListener('click', () => {
+  if (Library.open) { Library.setOpen(false); Rooms.setOpen(true, !liveMode); }
+  else Rooms.setOpen(!Rooms.open, !liveMode);
+});
 document.getElementById('rooms-close').addEventListener('click', () => Rooms.setOpen(false, !liveMode));
 document.getElementById('rooms-new-btn').addEventListener('click', () => openRoomForm('create'));
 setInterval(() => { if (Rooms.open && Rooms.state === 'ok') Rooms.render(); }, 60000); // keep "5 min ago" honest
@@ -1849,6 +1926,7 @@ activeBoardId = boards[0].id;
 restoreBoard(boards[0]);
 renderTabs();
 updateLiveUI();
+Library.init();
 Rooms.setOpen(Rooms.prefOpen());
 
 // Opened from a share link? Join straight away.
